@@ -14,6 +14,15 @@ public sealed class IdeaChainVersion
 
 //坑：固定喂同一份材料时，模型每轮都会得出同一个结论
 /// <summary>一个对象的「思想链」：每一轮发散接着上一轮的想法往下走。</summary>
+/// <summary>一件已经了结的事：主题、什么时候了结的、当时说了什么。</summary>
+public sealed class ResolvedTopic
+{
+    public string Topic { get; set; } = "";
+    public long Ts { get; set; }
+    public string Target { get; set; } = "";
+    public string Did { get; set; } = "";
+}
+
 public sealed class IdeaChain
 {
     public string Target { get; set; } = "";
@@ -27,6 +36,8 @@ public sealed class IdeaChain
     /// <summary>上次消费到的输入水位（排除自己说的话）。没有新消息就不再想一遍。</summary>
     public long LastInputTs { get; set; }
     public List<IdeaChainVersion> History { get; set; } = new();
+    /// <summary>已经了结的事。了结之后不再主动重提，思绪也不再带着它往下滚。</summary>
+    public List<ResolvedTopic> Resolved { get; set; } = new();
 }
 
 /// <summary>加权意向里的一条「要做的事」。</summary>
@@ -179,6 +190,8 @@ public sealed class IdeaChainStore
             var chain = JsonSerializer.Deserialize<IdeaChain>(File.ReadAllText(path), AppJson.Config)
                         ?? new IdeaChain { Target = target };
             chain.Target = target;
+            chain.Resolved ??= new List<ResolvedTopic>();
+            chain.Topics ??= new List<string>();
             return chain;
         }
         catch

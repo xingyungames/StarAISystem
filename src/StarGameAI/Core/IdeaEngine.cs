@@ -797,7 +797,16 @@ public sealed class IdeaEngine : BackgroundService
             try
             {
                 var (ck, ct2) = SplitTarget(chosen.Target);
-                if (_chains.ConsumeByTarget(ck, ct2))
+                var consumed = _chains.ConsumeByTarget(ck, ct2);
+
+                // 了结：记下这件事做完了，并且**把承载它的思绪清掉**。
+                //
+                // 不清会有个死循环：这一轮思绪写「梦想还欠着」，下一轮发散读到
+                // 「上一版的思绪：梦想还欠着」，于是又想一遍、又答一遍。
+                // 实测同一件事 50 分钟内被重做 6 次。
+                MarkResolved(chain, round.Topic, chosen.Target, chosen.Text);
+
+                if (consumed)
                 {
                     round.Detail = "已消费对应加权意向：" + IdeaWeight.TitleOf(ck, "", ct2);
                     _metrics.Inc("idea.weight.consumed");
@@ -1059,6 +1068,37 @@ public sealed class IdeaEngine : BackgroundService
     }
 
     /// <summary>节点二：**根据记忆碎片发呆**（自我意图）。</summary>
+    /// <summary>
+    /// 把一件做完的事记成"已了结"，并清掉承载它的思绪。
+    ///
+    /// 清思绪是关键：思想的链条会把上一版思绪喂给下一版，
+    /// 于是"我还欠着"这句会自己滚下去，永远停不下来。
+    /// 了结之后必须切断这条链，否则同一件事会被反复重做。
+    /// </summary>
+    private void MarkResolved(IdeaChain chain, string topic, string target, string did)
+    {
+        var t = (topic ?? "").Trim();
+        if (t.Length == 0) return;
+
+        chain.Resolved.Insert(0, new ResolvedTopic
+        {
+            Topic = t.Length > 24 ? t[..24] : t,
+            Ts = Now(),
+            Target = target,
+            Did = did.Length > 80 ? did[..80] : did,
+        });
+
+        if (chain.Resolved.Count > 20) chain.Resolved = chain.Resolved.Take(20).ToList();
+
+        // 切断承载链：思绪、上一版念头、主题标签都清掉，下一轮从干净的起点想
+        chain.Thought = "";
+        chain.Thoughts.Clear();
+        chain.Topics.RemoveAll(x => SameTopic(x, t));
+
+        chain.UpdatedAt = Now();
+        _chains.Save(chain);
+    }
+
     private string BuildSelfContext(IdeaChain chain, IdeaInputs inputs)
     {
         var cfg = _env.Idea.Chain;
@@ -1096,6 +1136,15 @@ public sealed class IdeaEngine : BackgroundService
 
         if (inputs.PrevThought.Length > 0)
             sb.AppendLine().AppendLine("【上一版的思绪】").AppendLine(inputs.PrevThought);
+        // 已经了结的事：明说不要再提，否则记忆碎片会把它重新拉回来
+        if (chain.Resolved.Count > 0)
+        {
+            sb.AppendLine().AppendLine("【已经了结的事】（做过了，不要再主动重提）");
+            foreach (var r in chain.Resolved.Take(6))
+                sb.Append("- ").Append(r.Topic).Append("（").Append(r.Did.Length > 30 ? r.Did[..30] : r.Did).AppendLine("）");
+            sb.AppendLine();
+        }
+
 
         if (inputs.PrevThoughts.Count > 0)
         {
