@@ -105,8 +105,6 @@
 
 ## 快速开始
 
-## 快速开始
-
 ### 前置
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
