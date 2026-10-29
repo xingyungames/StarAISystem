@@ -559,6 +559,6 @@ data/
 ---
 
 ## 核心目标
-@星云游 -For the pure self And dreams
-@星涵 -打造真正连接世界的桥梁
-@AIForWorld -AI学习，负责记忆；AI框架，负责自我；
+@星云游 -For the pure self And dreams  
+@星涵 -打造真正连接世界的桥梁  
+@AIForWorld -AI学习，负责记忆；AI框架，负责自我  
