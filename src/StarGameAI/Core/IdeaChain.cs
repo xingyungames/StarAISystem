@@ -1,0 +1,600 @@
+﻿using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace StarGameAI.Core;
+
+public sealed class IdeaChainVersion
+{
+    public int V { get; set; }
+    public long Ts { get; set; }
+    public List<string> Thoughts { get; set; } = new();
+    /// <summary>这一版落到哪个主题上（短标签），用于判断是不是又在想同一件事。</summary>
+    public string Topic { get; set; } = "";
+}
+
+//坑：固定喂同一份材料时，模型每轮都会得出同一个结论
+/// <summary>一个对象的「思想链」：每一轮发散接着上一轮的想法往下走。</summary>
+public sealed class IdeaChain
+{
+    public string Target { get; set; } = "";
+    public int Version { get; set; }
+    public long UpdatedAt { get; set; }
+    public List<string> Thoughts { get; set; } = new();
+    public string Thought { get; set; } = "";
+    public string Topic { get; set; } = "";
+    /// <summary>最近几版的主题标签（旧 → 新，最多 6 个）。用来判断"是不是又在想同一件事"。</summary>
+    public List<string> Topics { get; set; } = new();
+    /// <summary>上次消费到的输入水位（排除自己说的话）。没有新消息就不再想一遍。</summary>
+    public long LastInputTs { get; set; }
+    public List<IdeaChainVersion> History { get; set; } = new();
+}
+
+/// <summary>加权意向里的一条「要做的事」。</summary>
+public sealed class WeightItem
+{
+    public string Id { get; set; } = "";
+    public string Text { get; set; } = "";
+    public long Ts { get; set; }
+
+    public static string NewId() => "i" + Guid.NewGuid().ToString("N")[..6];
+}
+
+//坑：权重只加不减会卡心结——顶在 1.00 永远不动，却从不变成动作
+/// <summary>一条「加权意向」：我打算对谁做什么。</summary>
+public sealed class IdeaWeight
+{
+    public string Id { get; set; } = "";
+    /// <summary>group / private / poke / file</summary>
+    public string Kind { get; set; } = "group";
+    /// <summary>群号或 QQ 号</summary>
+    public string Target { get; set; } = "";
+    /// <summary>对方的名字。**只从联系人目录取，不信模型给的名字**。</summary>
+    public string Who { get; set; } = "";
+    /// <summary>枚举出来的落点说明：在群里发言 / 和某某私聊</summary>
+    public string Title { get; set; } = "";
+
+    //坑：只按落点归并时，「梦想」会同时出现在 5 个桶里，每个都被顶到 1.00
+    /// <summary>主题键（≤8 字），如「梦想」「喊困」「关系试探」。</summary>
+    public string Topic { get; set; } = "";
+
+    /// <summary>这条意向来自哪一路发散。</summary>
+    public string Origin { get; set; } = "context";
+
+    /// <summary>要做的事，一件事一条。</summary>
+    public List<WeightItem> Items { get; set; } = new();
+
+    /// <summary>够重了却一直没被兑现的轮数。</summary>
+    public int MatureRounds { get; set; }
+
+    /// <summary>当前权重（已经扣过衰减的**现值**，不是历史峰值）。</summary>
+    public double Weight { get; set; }
+    /// <summary>已经做过 / 已经在回复里体现过了。置位的条目会被移出列表。</summary>
+    public bool Done { get; set; }
+    public long CreatedAt { get; set; }
+    /// <summary>最后一次加权或扣衰减的时间点（衰减的锚）。</summary>
+    public long UpdatedAt { get; set; }
+    /// <summary>被加权过几次。</summary>
+    public int Reinforced { get; set; }
+
+    /// <summary>落点标题：只由 Kind + Who + Target 推出来，不给模型自由发挥的空间。</summary>
+    public static string TitleOf(string kind, string who, string target)
+    {
+        var k = (kind ?? "").Trim().ToLowerInvariant();
+        var w = (who ?? "").Trim();
+        var t = (target ?? "").Trim();
+
+        // 群聊要把群号带上——否则后台里好几个"在群里发言"长得一模一样
+        var groupTag = k == "group" && t.Length > 0 ? "·" + t : "";
+
+        if (k == "private")
+        {
+            var name = w.Length > 0 ? w : (t.Length > 0 ? t : "某人");
+            return "和" + name + "私聊";
+        }
+
+        if (k == "poke") return "戳一下" + (w.Length > 0 ? w : "某人") + "（提醒他）";
+        if (k == "file") return "给" + (w.Length > 0 ? w : "某人") + "发文件";
+
+        return "在群里发言" + groupTag;
+    }
+
+    /// <summary>带主题的标题：和星涵私聊·梦想 / 在群里发言·100001·喊困。</summary>
+    public static string TitleWithTopic(string kind, string who, string target, string topic)
+    {
+        var baseTitle = TitleOf(kind, who, target);
+        var t = (topic ?? "").Trim();
+        return t.Length == 0 ? baseTitle : baseTitle + "·" + t;
+    }
+
+    /// <summary>累加用的键：落在同一个地方、同一个主题的意向合成一条。</summary>
+    public static string KeyOf(string kind, string target) =>
+        (kind ?? "").Trim().ToLowerInvariant() + "|" + (target ?? "").Trim();
+
+    /// <summary>带主题的键。<c>(实体, 主题)</c> 才是真正的归并单位。</summary>
+    public static string KeyOf(string kind, string target, string topic)
+    {
+        var b = KeyOf(kind, target);
+        var t = (topic ?? "").Trim();
+        return t.Length == 0 ? b : b + "|" + t;
+    }
+
+    /// <summary>落盘/内存里用的键。</summary>
+    public static string StoreKey(IdeaWeight w) =>
+        (w.Target ?? "").Trim().Length > 0
+            ? IdeaWeight.KeyOf(w.Kind ?? "", w.Target ?? "", w.Topic ?? "")
+            : "legacy|" + (w.Id.Length > 0 ? w.Id : Math.Abs((FirstText(w) ?? "").GetHashCode()).ToString("x8"));
+
+    public static string FirstText(IdeaWeight w) =>
+        w.Items.Count > 0 ? w.Items[0].Text : "";
+
+    /// <summary>把老格式里被「；」缝起来的流水句拆成一件事一条。</summary>
+    public static List<string> SplitLegacyBody(string body)
+    {
+        var result = new List<string>();
+        var text = (body ?? "").Trim();
+        if (text.Length == 0) return result;
+
+        foreach (var raw in text.Split(new[] { '；', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var part = raw.Trim().Trim('。', '，', ',');
+            if (part.Length == 0) continue;
+
+            // 太长仍然要截，但至少一件一条、不再缝别人
+            result.Add(part.Length > 60 ? part[..60] : part);
+            if (result.Count >= 6) break;
+        }
+
+        if (result.Count == 0 && text.Length > 0)
+            result.Add(text.Length > 60 ? text[..60] : text);
+
+        return result;
+    }
+
+    /// <summary>整桶的展示文本（后台/日志用）。</summary>
+    public string Summary() =>
+        Items.Count == 0 ? "" : string.Join("；", Items.Select(i => i.Text));
+}
+
+/// <summary>思想链与「加权意向」的存储。</summary>
+public sealed class IdeaChainStore
+{
+    private readonly Env _env;
+    private readonly object _lock = new();
+
+    public IdeaChainStore(Env env) => _env = env;
+
+    private string ChainDir => Path.Combine(_env.IdeaDir, "chain");
+    private string WeightsFile => Path.Combine(_env.IdeaDir, "weights.json");
+
+    private string ChainFile(string target) =>
+        Path.Combine(ChainDir, Memory.Store.SafeName(target) + ".json");
+
+    public IdeaChain Load(string target)
+    {
+        var path = ChainFile(target);
+        if (!File.Exists(path)) return new IdeaChain { Target = target };
+
+        try
+        {
+            var chain = JsonSerializer.Deserialize<IdeaChain>(File.ReadAllText(path), AppJson.Config)
+                        ?? new IdeaChain { Target = target };
+            chain.Target = target;
+            return chain;
+        }
+        catch
+        {
+            return new IdeaChain { Target = target };
+        }
+    }
+
+    public void Save(IdeaChain chain)
+    {
+        lock (_lock)
+        {
+            try
+            {
+                Directory.CreateDirectory(ChainDir);
+                Env.WriteAtomic(ChainFile(chain.Target), JsonSerializer.Serialize(chain, AppJson.Config));
+            }
+            catch { /* 忽略 */ }
+        }
+    }
+
+    // -- 加权意向 -----------------------------------------------------
+
+    /// <summary>读出所有加权意向，并**在这一步扣掉衰减、清掉遗忘的**。</summary>
+    public Dictionary<string, IdeaWeight> LoadWeights()
+    {
+        try
+        {
+            if (!File.Exists(WeightsFile)) return new Dictionary<string, IdeaWeight>();
+
+            var node = JsonNode.Parse(File.ReadAllText(WeightsFile));
+            if (node is not JsonObject obj) return new Dictionary<string, IdeaWeight>();
+
+            var cfg = _env.Idea.Weight;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var halfLifeDays = Math.Max(0.5, cfg.HalfLifeDays);
+            var forgetBelow = Math.Clamp(cfg.ForgetBelow, 0.0, 0.5);
+
+            var map = new Dictionary<string, IdeaWeight>(StringComparer.Ordinal);
+            var dirty = false;
+
+            foreach (var (key, value) in obj)
+            {
+                if (value is not JsonObject o) continue;
+
+                IdeaWeight? w = null;
+
+                if (o.ContainsKey("items"))
+                {
+                    w = o.Deserialize<IdeaWeight>(AppJson.Config);
+                }
+                else if (o.ContainsKey("body"))
+                {
+                    // 上一版：单个 body 字段
+                    var body = o["body"]?.GetValue<string>() ?? "";
+                    if (body.Length == 0) continue;
+
+                    w = new IdeaWeight
+                    {
+                        Id = o["id"]?.GetValue<string>() ?? "",
+                        Kind = o["kind"]?.GetValue<string>() ?? "group",
+                        Target = o["target"]?.GetValue<string>() ?? "",
+                        Who = o["who"]?.GetValue<string>() ?? "",
+                        Weight = o["weight"]?.GetValue<double>() ?? 0,
+                        Done = o["done"]?.GetValue<bool>() ?? false,
+                        CreatedAt = o["created_at"]?.GetValue<long>() ?? 0,
+                        UpdatedAt = o["updated_at"]?.GetValue<long>() ?? 0,
+                    };
+                    w.Items.Add(new WeightItem { Id = WeightItem.NewId(), Text = body, Ts = w.UpdatedAt });
+                    dirty = true;
+
+                    // **拆开**：老 body 是用「；」把好几件事缝成一句的，
+                    // 原样搬过来就还是一条被截断的流水句。按分号拆成一件事一条。
+                    w.Items.Clear();
+                    foreach (var part in IdeaWeight.SplitLegacyBody(body))
+                        w.Items.Add(new WeightItem { Id = WeightItem.NewId(), Text = part, Ts = w.UpdatedAt });
+                }
+                else
+                {
+                    // 最早的老格式：what / key / weight / updated_at
+                    var what = o["what"]?.GetValue<string>() ?? "";
+                    if (what.Length == 0) continue;
+
+                    w = new IdeaWeight
+                    {
+                        Id = "old" + Math.Abs(what.GetHashCode()).ToString("x8"),
+                        Kind = "group",
+                        Target = "",
+                        Weight = o["weight"]?.GetValue<double>() ?? 0,
+                        UpdatedAt = o["updated_at"]?.GetValue<long>() ?? 0,
+                    };
+                    w.Items.Add(new WeightItem { Id = WeightItem.NewId(), Text = what, Ts = w.UpdatedAt });
+                    dirty = true;
+                }
+
+                if (w is null) continue;
+
+                w.Id = w.Id.Length > 0 ? w.Id : key;
+                w.Items.RemoveAll(i => i.Text.Trim().Length == 0);
+                if (w.Items.Count == 0) { dirty = true; continue; }
+
+                if (w.Title.Length == 0) w.Title = IdeaWeight.TitleOf(w.Kind, w.Who, w.Target);
+
+                // ---- 渐进衰减
+                if (w.UpdatedAt > 0 && now > w.UpdatedAt)
+                {
+                    var days = (now - w.UpdatedAt) / 86400.0;
+                    if (days > 0.01)
+                    {
+                        // 一直没被兑现的（MatureRounds 超过阈值）承认做不到，衰减加速
+                        var staleAt = Math.Max(2, _env.Idea.Weight.StaleRounds);
+                        var boostSpeed = w.MatureRounds >= staleAt ? 3.0 : 1.0;
+
+                        var factor = Math.Pow(0.5, days * boostSpeed / halfLifeDays);
+                        var decayed = w.Weight * factor;
+                        if (Math.Abs(decayed - w.Weight) > 0.001)
+                        {
+                            w.Weight = Math.Round(decayed, 4);
+                            dirty = true;
+                        }
+                        w.UpdatedAt = now;
+                    }
+                }
+
+                // ---- 完全遗忘：掉到阈值以下就整条移除
+                if (!w.Done && w.Weight < forgetBelow)
+                {
+                    dirty = true;
+                    continue;
+                }
+
+                map[IdeaWeight.StoreKey(w)] = w;
+            }
+
+            if (dirty) SaveWeights(map.Values.ToList(), alreadyLocked: false);
+            return map;
+        }
+        catch
+        {
+            return new Dictionary<string, IdeaWeight>();
+        }
+    }
+
+    public void SaveWeights(IEnumerable<IdeaWeight> items, bool alreadyLocked = true)
+    {
+        lock (_lock)
+        {
+            var all = items
+                .Where(w => w.Items.Count > 0)
+                .OrderByDescending(w => w.Weight)
+                .ThenByDescending(w => w.UpdatedAt)
+                .Take(Math.Max(4, _env.Idea.Weight.MaxBuckets))
+                .ToList();
+
+            var map = new Dictionary<string, IdeaWeight>(StringComparer.Ordinal);
+            foreach (var w in all) map[IdeaWeight.StoreKey(w)] = w;
+
+            try
+            {
+                Env.WriteAtomic(WeightsFile, JsonSerializer.Serialize(map, AppJson.Config));
+            }
+            catch { /* 忽略 */ }
+        }
+    }
+
+    /// <summary>还活着、还没做的加权意向（按权重降序）。</summary>
+    public List<IdeaWeight> PendingWeights(int max = 8) =>
+        LoadWeights().Values
+            .Where(w => !w.Done && w.Weight > 0.05)
+            .OrderByDescending(w => w.Weight)
+            .Take(max)
+            .ToList();
+
+    /// <summary>够重但一直没做的意向（权重 ≥ act_threshold）。</summary>
+    public List<IdeaWeight> MatureWeights(int max = 3)
+    {
+        var threshold = Math.Clamp(_env.Idea.Weight.ActThreshold, 0.3, 1.0);
+
+        return LoadWeights().Values
+            .Where(w => !w.Done && w.Weight >= threshold)
+            .OrderByDescending(w => w.Weight)
+            .Take(max)
+            .ToList();
+    }
+
+    /// <summary>加权。返回 null 表示**拒绝**——桶已经够重了。</summary>
+    public (IdeaWeight? weight, bool rejected) Boost(string kind, string target, string who,
+        string topic, string origin, IEnumerable<string> newItems, double amount)
+    {
+        var k = (kind ?? "group").Trim().ToLowerInvariant();
+        var t = (target ?? "").Trim();
+        var tp = (topic ?? "").Trim();
+
+        lock (_lock)
+        {
+            var all = LoadWeights();
+
+            // 键是 (实体, 主题)。找不到同主题的桶时，再退一步找 (实体) 下主题为空的旧桶。
+            var key = IdeaWeight.KeyOf(k, t, tp);
+            if (!all.TryGetValue(key, out var hit) && tp.Length > 0)
+                all.TryGetValue(IdeaWeight.KeyOf(k, t), out hit);
+
+            var cap = Math.Clamp(_env.Idea.Weight.ActThreshold, 0.3, 1.0);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            if (hit is not null)
+            {
+                if (hit.Weight >= cap)
+                    return (hit, true);   // 够重了，别再惦记
+
+                // ---- 内容没变就不加权
+                //
+                // 实盘的问题：每 5 分钟都会把同一批话重新"确认"一遍，内容一个字没变，
+                // 权重却一路加。而且**每加一次就重置衰减锚点**，于是权重在 0.95~1.0
+                // 之间永久锯齿，衰减永远追不上。
+                // 现在只有真的新增了事项才加权重、才刷新时间。
+                var beforeCount = hit.Items.Count;
+                MergeItems(hit, newItems);
+                var changed = hit.Items.Count > beforeCount;
+
+                if (changed)
+                {
+                    hit.Weight = Math.Min(cap, hit.Weight + Math.Clamp(amount, 0.01, 0.5));
+                    hit.UpdatedAt = now;
+                    hit.Reinforced++;
+                }
+
+                if (hit.Who.Length == 0 && who.Length > 0) hit.Who = who;
+                if (hit.Topic.Length == 0 && tp.Length > 0) hit.Topic = tp;
+                hit.Title = IdeaWeight.TitleWithTopic(hit.Kind, hit.Who, hit.Target, hit.Topic);
+
+                SaveWeights(all.Values.ToList(), alreadyLocked: false);
+                return (hit, false);
+            }
+
+            var created = new IdeaWeight
+            {
+                Id = "w" + Guid.NewGuid().ToString("N")[..8],
+                Kind = k,
+                Target = t,
+                Who = who,
+                Topic = tp,
+                Origin = origin == "self" ? "self" : "context",
+                Weight = Math.Min(cap, Math.Clamp(amount, 0.02, 0.5)),
+                CreatedAt = now,
+                UpdatedAt = now,
+                Reinforced = 1,
+            };
+            created.Title = IdeaWeight.TitleWithTopic(created.Kind, created.Who, created.Target, created.Topic);
+            MergeItems(created, newItems);
+
+            if (created.Items.Count == 0) return (null, false);
+
+            all[key] = created;
+            SaveWeights(all.Values.ToList(), alreadyLocked: false);
+            return (created, false);
+        }
+    }
+
+    /// <summary>增删事项：一句话一件事，同一桶里不重复。</summary>
+    public static void MergeItems(IdeaWeight bucket, IEnumerable<string> texts)
+    {
+        var max = 6;
+
+        foreach (var raw in texts)
+        {
+            var text = (raw ?? "").Trim();
+            if (text.Length == 0) continue;
+            if (text.Length > 60) text = text[..60];
+
+            // 已经说过类似的不再重复加（同桶内近似归并）
+            var dup = bucket.Items.Any(i =>
+                TextSim.Similarity(i.Text, text) >= 0.72
+                || i.Text.Contains(text, StringComparison.Ordinal)
+                || text.Contains(i.Text, StringComparison.Ordinal));
+
+            if (dup) continue;
+            if (bucket.Items.Count >= max) break;
+
+            bucket.Items.Add(new WeightItem
+            {
+                Id = WeightItem.NewId(),
+                Text = text,
+                Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            });
+        }
+    }
+
+    /// <summary>消费掉一条意向：标记完成并**移出列表**。</summary>
+    public bool Consume(string id, string by)
+    {
+        var all = LoadWeights();
+        var hit = all.Values.FirstOrDefault(w => w.Id == id);
+        if (hit is null) return false;
+
+        hit.Done = true;
+        hit.Weight = 0;
+        SaveWeights(all.Values.Where(w => !w.Done).ToList());
+        return true;
+    }
+
+    /// <summary>按落点直接消费整桶（act 成功发出时用）。</summary>
+    public bool ConsumeByTarget(string kind, string target)
+    {
+        var all = LoadWeights();
+        var key = IdeaWeight.KeyOf(kind, target);
+        if (!all.TryGetValue(key, out var hit)) return false;
+
+        hit.Done = true;
+        hit.Weight = 0;
+        SaveWeights(all.Values.Where(w => !w.Done).ToList());
+        return true;
+    }
+
+    /// <summary>删掉一条。</summary>
+    public bool SetOrigin(string id, string origin)
+    {
+        var want = origin == "self" ? "self" : "context";
+        var all = LoadWeights();
+        var hit = all.Values.FirstOrDefault(w => w.Id == id);
+        if (hit is null) return false;
+
+        hit.Origin = want;
+        // 改判成自我意象之后，之前攒的"未兑现轮数"就不再适用了（它本来就该自己做）
+        if (want == "self") hit.MatureRounds = 0;
+        hit.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        SaveWeights(all.Values.ToList());
+        return true;
+    }
+
+    public bool Remove(string id)
+    {
+        var all = LoadWeights();
+        var hit = all.Values.FirstOrDefault(w => w.Id == id);
+        if (hit is null) return false;
+
+        all.Remove(IdeaWeight.StoreKey(hit));
+        SaveWeights(all.Values.ToList());
+        return true;
+    }
+
+    /// <summary>老数据清账：把没有落点（target 为空）的条目合并成一条，合不动的丢弃。</summary>
+    public int CleanupLegacy()
+    {
+        var all = LoadWeights();
+        var legacy = all.Values.Where(w => w.Target.Trim().Length == 0).ToList();
+        if (legacy.Count == 0) return 0;
+
+        var merged = new IdeaWeight
+        {
+            Id = "legacyMerged",
+            Kind = "group",
+            Target = "",
+            // 这个桶是"历史遗留"的临时收容所，没有落点、永远不会被执行。
+            // 权重给低一点让它自然衰减掉，而不是继承某条已完成条目的高权重继续赖着。
+            Weight = 0.10,
+            CreatedAt = legacy.Min(w => w.CreatedAt),
+            UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+
+        foreach (var w in legacy)
+            foreach (var i in w.Items)
+                if (merged.Items.Count < 6) merged.Items.Add(i);
+
+        foreach (var w in legacy) all.Remove(IdeaWeight.StoreKey(w));
+
+        if (merged.Items.Count > 0) all[IdeaWeight.StoreKey(merged)] = merged;
+
+        SaveWeights(all.Values.ToList());
+        return legacy.Count;
+    }
+
+    /// <summary>用联系人目录校正每个桶的 <c>Who</c>。</summary>
+    public int FixWho(Func<string, string> resolveName)
+    {
+        var all = LoadWeights();
+        var fixedCount = 0;
+
+        foreach (var w in all.Values)
+        {
+            if (w.Target.Trim().Length == 0) continue;
+
+            var real = (resolveName(w.Target) ?? "").Trim();
+            if (string.Equals(real, w.Who, StringComparison.Ordinal)) continue;
+
+            w.Who = real;
+            w.Title = IdeaWeight.TitleOf(w.Kind, w.Who, w.Target);
+            fixedCount++;
+        }
+
+        if (fixedCount > 0) SaveWeights(all.Values.ToList());
+        return fixedCount;
+    }
+
+    /// <summary>一轮想完之后调用：给"够重但没被兑现"的桶加一次计数。</summary>
+    public void NoteUnfulfilled()
+    {
+        var cap = Math.Clamp(_env.Idea.Weight.ActThreshold, 0.3, 1.0);
+
+        lock (_lock)
+        {
+            var all = LoadWeights();
+            var touched = false;
+
+            foreach (var w in all.Values)
+            {
+                if (w.Done || w.Weight < cap) continue;
+                w.MatureRounds++;
+                touched = true;
+            }
+
+            if (touched) SaveWeights(all.Values.ToList(), alreadyLocked: false);
+        }
+    }
+
+    /// <summary>权重最高且还新鲜的几条，喂给下一轮发散。</summary>
+    public List<IdeaWeight> TopWeights(int max = 5) => PendingWeights(max);
+}

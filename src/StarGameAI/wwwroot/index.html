@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>StarGameAI 管理后台</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 侧边导航 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <strong>StarGameAI</strong>
+          <small>管理后台</small>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav"></nav>
+
+      <div class="sidebar-foot">
+        <div class="conn">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-text" id="connText">本机回环访问</span>
+        </div>
+        <div class="foot-hint">仅监听 127.0.0.1</div>
+        <button class="btn btn-ghost btn-block btn-sm" id="logoutBtn" type="button">退出登录</button>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main">
+      <header class="topbar">
+        <h1 id="pageTitle">仪表盘</h1>
+        <div class="topbar-right" id="topbarRight">
+          <span class="topbar-note" id="topbarNote"></span>
+        </div>
+      </header>
+      <div class="content" id="content"></div>
+    </main>
+  </div>
+
+  <div class="toast-host" id="toastHost"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
