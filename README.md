@@ -105,49 +105,48 @@
 
 ## 快速开始
 
+## 快速开始
+
 ### 前置
 
-- .NET 9 SDK
-- [NapCat](https://github.com/NapNeko/NapCatQQ)（或任何 OneBot 11 实现）监听 `127.0.0.1:3000`
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- NapCat（或任何 OneBot 11 实现），监听 `127.0.0.1:3000`
 - 一个 DeepSeek API Key
 
-### 构建
+### 1. 克隆并进入项目
 
-```powershell
-$root = "D:\StarGameAI"
+```bash
+git clone https://github.com/xingyungames/StarAISystem.git
+cd StarAISystem
+```
 
-# 受限环境里 dotnet 会试图写用户目录，建议重定向
-$env:DOTNET_CLI_HOME = "$root\.dotnet-home"
-$env:NUGET_PACKAGES  = "$root\.nuget"
+> 下文用 `<项目根>` 表示你克隆下来的目录（例如 `D:\StarGameAI` 或 `~/StarAISystem`），请替换成自己的实际路径。
 
-cd "$root\src\StarGameAI"
+### 2. 构建并启动
+
+```bash
+# 受限环境里 dotnet 会试图写用户目录，建议重定向（可选）
+export DOTNET_CLI_HOME="<项目根>/.dotnet-home"   # Windows PowerShell: $env:DOTNET_CLI_HOME = "<项目根>\.dotnet-home"
+export NUGET_PACKAGES="<项目根>/.nuget"          # Windows PowerShell: $env:NUGET_PACKAGES  = "<项目根>\.nuget"
+
+cd "<项目根>/src/StarGameAI"
 dotnet build -c Release
 dotnet run   -c Release --no-build
 ```
 
-启动后后台在 <http://127.0.0.1:11221/>，第一次打开会自动进配置引导。
+启动后后台在 `http://127.0.0.1:11221/`，第一次打开会自动进配置引导。
 
-两个可选的环境变量（都只影响运行，不影响配置）：
+### 3. 最小配置
 
-| 变量 | 作用 |
-|---|---|
-| `STARGAMEAI_ROOT` | 显式指定项目根（`config/` 与 `data/` 的父目录）。不设就从程序目录向上找，找不到就用程序目录本身 |
-| `STARGAMEAI_PORT` | 覆盖监听端口。端口被占用、或想旁路起一个调试实例时用 |
-
-### 最小配置
-
-**不用手写配置文件。** 第一次打开后台会自动进引导页，填三样就能跑：
+不用手写配置文件。第一次打开后台会自动进引导页，填三样就能跑：
 
 1. **DeepSeek API Key**（带「测试」按钮，当场验证连通性）
 2. **NapCat 的 OneBot 地址 + access token + 机器人 QQ 号**（带「测试」按钮）
 3. **白名单群 / 私聊**（可留空 = 不设限，建议先填一两个）
 
-两个本地 token（上报签名、后台口令）**服务启动时已经自动生成好了**，
-引导页会把它们展示出来，同时写进 `config/secrets.json`。
+两个本地 token（上报签名、后台口令）服务启动时已经自动生成好，引导页会展示并写进 `config/secrets.json`。
 
-> 人设那一格可以留空。留空就是真的从零开始——这套系统的前提是
-> 「人格必须通过睡眠巩固长出来」，所以空白 AI 不是缺陷，是起点。
-
+> 人设那一格可以留空。留空就是真的从零开始——这套系统的前提是「人格必须通过睡眠巩固长出来」，所以空白 AI 不是缺陷，是起点。
 配置写在 `config/` 下，之后随时能在后台各页面改（保存即生效，不用重启）。
 只有**人设和白名单**需要重启加载。
 
