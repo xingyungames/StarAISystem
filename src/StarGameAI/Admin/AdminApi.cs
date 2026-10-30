@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using StarGameAI.Core;
 using StarGameAI.Gateway;
@@ -1459,6 +1459,27 @@ public static class AdminApi
 
             Audit(env, "idea.weight.origin", new { id, origin });
             return Results.Json(new { ok = true, origin = origin == "self" ? "self" : "context" });
+        });
+
+        // 重置思想链：清掉正在带的念头，下一轮不再把上一轮的内容带进去
+        app.MapPost("/api/idea/chain/reset", async (HttpContext ctx, Env env, IdeaChainStore chains) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var body = await ReadJsonAsync(ctx);
+            var target = body is null ? "" : StrOf(body.RootElement, "target");
+
+            // clearDone 是逃生口：全局了结表里的东西做完就永久不再提，
+            // 万一判错了（把不该了结的记为已做完），只有这里能放回来。
+            var clearDone = body is not null
+                            && body.RootElement.TryGetProperty("clearDone", out var cd)
+                            && cd.ValueKind == JsonValueKind.True;
+
+            var cleared = chains.ResetCarry(target);
+            var doneCleared = clearDone ? chains.ClearDone() : 0;
+
+            Audit(env, "idea.chain.reset", new { target, cleared, doneCleared });
+            return Results.Json(new { ok = true, cleared, doneCleared });
         });
 
         app.MapPost("/api/idea/weights/cleanup-legacy", (HttpContext ctx, Env env, IdeaChainStore chains) =>

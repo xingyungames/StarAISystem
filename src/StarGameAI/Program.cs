@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using StarGameAI.Admin;
@@ -54,6 +54,7 @@ builder.Services.AddSingleton<IdeaGate>();
 builder.Services.AddSingleton<IdeaChainStore>();
 builder.Services.AddSingleton<IntentAgent>();
 builder.Services.AddSingleton<WeightAgent>();
+builder.Services.AddSingleton<RouteAgent>();
 builder.Services.AddSingleton<StyleStore>();
 builder.Services.AddSingleton<DialogueStore>();
 builder.Services.AddSingleton<DialogueRouter>();

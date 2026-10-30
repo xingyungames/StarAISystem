@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace StarGameAI.Core;
@@ -21,6 +21,8 @@ public sealed class ResolvedTopic
     public long Ts { get; set; }
     public string Target { get; set; } = "";
     public string Did { get; set; } = "";
+    /// <summary>是否真的送达了。送达则永久不再提；没送达只是占位，允许冷却后重试。</summary>
+    public bool Delivered { get; set; }
 }
 
 public sealed class IdeaChain
@@ -38,6 +40,35 @@ public sealed class IdeaChain
     public List<IdeaChainVersion> History { get; set; } = new();
     /// <summary>已经了结的事。了结之后不再主动重提，思绪也不再带着它往下滚。</summary>
     public List<ResolvedTopic> Resolved { get; set; } = new();
+
+    /// <summary>
+    /// 停放中的事：判定现在做不了（时机不对、落点不合适），先压着不做，
+    /// 也不进下一轮的任何输入。到期再拿出来。
+    /// </summary>
+    public List<HeldTopic> Held { get; set; } = new();
+}
+
+/// <summary>停放中的一件事。</summary>
+public sealed class HeldTopic
+{
+    public string Topic { get; set; } = "";
+
+    /// <summary>什么时候判它做不了的。</summary>
+    public long Ts { get; set; }
+
+    /// <summary>为什么做不了（时机不对 / 会打扰 / 没合适的地方说）。</summary>
+    public string Why { get; set; } = "";
+
+    /// <summary>到这个时刻之后可以重新拿出来。</summary>
+    public long Until { get; set; }
+}
+
+/// <summary>全局了结表里的一条：这件事在某个落点已经做完了。</summary>
+public sealed class DoneTopic
+{
+    public string Topic { get; set; } = "";
+    public string Target { get; set; } = "";
+    public long Ts { get; set; }
 }
 
 /// <summary>加权意向里的一条「要做的事」。</summary>
@@ -192,6 +223,7 @@ public sealed class IdeaChainStore
             chain.Target = target;
             chain.Resolved ??= new List<ResolvedTopic>();
             chain.Topics ??= new List<string>();
+            chain.Held ??= new List<HeldTopic>();
             return chain;
         }
         catch
@@ -211,6 +243,224 @@ public sealed class IdeaChainStore
             }
             catch { /* 忽略 */ }
         }
+    }
+
+    /// <summary>清掉正在带的念头，让下一轮从空白开始想。target 为空就清全部。</summary>
+    public List<string> ResetCarry(string target)
+    {
+        var done = new List<string>();
+
+        var one = (target ?? "").Trim();
+        if (one.Length > 0)
+        {
+            var chain = Load(one);
+            if (!Clear(chain)) return done;
+
+            Save(chain);
+            done.Add(chain.Target);
+            return done;
+        }
+
+        // 全清时**不能**拿文件名当 target 再 Load：文件名是 SafeName 之后的，
+        // "group:1098659169" 里的冒号已经被压成下划线，这么一 Load 就会把文件里
+        // 本来正确的 target 改写成下划线版，落点从此对不上。所以直接读文件本身。
+        try
+        {
+            if (!Directory.Exists(ChainDir)) return done;
+
+            foreach (var p in Directory.GetFiles(ChainDir, "*.json"))
+            {
+                IdeaChain? chain;
+                try
+                {
+                    chain = JsonSerializer.Deserialize<IdeaChain>(File.ReadAllText(p), AppJson.Config);
+                }
+                catch { continue; }
+
+                if (chain is null || !Clear(chain)) continue;
+
+                Env.WriteAtomic(p, JsonSerializer.Serialize(chain, AppJson.Config));
+                done.Add(chain.Target.Length > 0 ? chain.Target : Path.GetFileNameWithoutExtension(p));
+            }
+        }
+        catch { /* 目录读不到就当没有 */ }
+
+        return done;
+    }
+
+    /// <summary>清掉一条链正在带的念头。真的清到了返回 true。</summary>
+    private static bool Clear(IdeaChain chain)
+    {
+        chain.Thoughts ??= new List<string>();
+        chain.Topics ??= new List<string>();
+
+        var carrying = chain.Thought.Trim().Length > 0
+                       || chain.Thoughts.Count > 0
+                       || chain.Topic.Trim().Length > 0
+                       || chain.Topics.Count > 0;
+        if (!carrying) return false;
+
+        // 只清「正在带的念头」，不动 Resolved——那是防重复提案的另一道锁。
+        // 两个一起清掉的话，下一轮就会把刚了结的事原样再提一遍，等于没重置。
+        chain.Thought = "";
+        chain.Thoughts.Clear();
+        chain.Topic = "";
+        chain.Topics.Clear();
+        chain.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return true;
+    }
+
+    // -- 停放 ---------------------------------------------------------
+
+    /// <summary>把一件事停下来：现在做不了，压着，到期再说。</summary>
+    public void Hold(IdeaChain chain, string topic, string why, int minutes)
+    {
+        var t = (topic ?? "").Trim();
+        if (t.Length == 0) return;
+
+        chain.Held ??= new List<HeldTopic>();
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var until = now + Math.Max(1, minutes) * 60L;
+
+        var hit = chain.Held.FirstOrDefault(h => SameTopic(h.Topic, t));
+        if (hit is not null)
+        {
+            hit.Ts = now;
+            hit.Until = until;
+            hit.Why = why;
+        }
+        else
+        {
+            chain.Held.Add(new HeldTopic
+            {
+                Topic = t.Length > 24 ? t[..24] : t,
+                Ts = now,
+                Why = why,
+                Until = until,
+            });
+        }
+
+        if (chain.Held.Count > 20) chain.Held = chain.Held.Skip(chain.Held.Count - 20).ToList();
+
+        // 停下来就要**把承载的念头一起清掉**，否则下一轮读到「上一版思绪」还是它，
+        // 等于没停。这是"做不了就先不入下一轮"的关键一半。
+        chain.Thought = "";
+        chain.Thoughts.Clear();
+        chain.Topics.RemoveAll(x => SameTopic(x, t));
+        if (SameTopic(chain.Topic, t)) chain.Topic = "";
+
+        chain.UpdatedAt = now;
+        Save(chain);
+    }
+
+    /// <summary>这件事现在还在停放期里吗（顺带清掉过期的）。</summary>
+    public bool IsHeld(IdeaChain chain, string topic)
+    {
+        var t = (topic ?? "").Trim();
+        if (t.Length == 0 || chain.Held is null || chain.Held.Count == 0) return false;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        chain.Held.RemoveAll(h => h.Until <= now);
+
+        return chain.Held.Any(h => SameTopic(h.Topic, t));
+    }
+
+    /// <summary>还在停放期里的事（给上下文展示与过滤用）。</summary>
+    public List<string> HeldTopics(IdeaChain chain)
+    {
+        if (chain.Held is null || chain.Held.Count == 0) return new List<string>();
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        chain.Held.RemoveAll(h => h.Until <= now);
+        return chain.Held.Select(h => h.Topic).ToList();
+    }
+
+    // -- 全局了结表 ---------------------------------------------------
+
+    private string DoneFile => Path.Combine(_env.IdeaDir, "done.json");
+
+    /// <summary>
+    /// 读全局了结表。
+    ///
+    /// 为什么要全局：实盘里同一件事在群里说了一次、私聊又说了一次。
+    /// 每条思想链各管各的 resolved，A 落点做完了 B 落点根本不知道，
+    /// 于是换个地方又提一遍。这张表是跨落点的唯一真相。
+    /// </summary>
+    public List<DoneTopic> LoadDone()
+    {
+        try
+        {
+            if (!File.Exists(DoneFile)) return new List<DoneTopic>();
+            var list = JsonSerializer.Deserialize<List<DoneTopic>>(File.ReadAllText(DoneFile), AppJson.Config);
+            return list ?? new List<DoneTopic>();
+        }
+        catch { return new List<DoneTopic>(); }
+    }
+
+    /// <summary>记一件事已经做完（全局，跨落点生效）。</summary>
+    public void AddDone(string topic, string target)
+    {
+        var t = (topic ?? "").Trim();
+        if (t.Length == 0) return;
+
+        lock (_lock)
+        {
+            try
+            {
+                var list = LoadDone();
+                var short26 = t.Length > 24 ? t[..24] : t;
+
+                if (list.Any(d => SameTopic(d.Topic, short26))) return;
+
+                list.Insert(0, new DoneTopic
+                {
+                    Topic = short26,
+                    Target = target,
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                });
+
+                if (list.Count > 60) list = list.Take(60).ToList();
+
+                Directory.CreateDirectory(_env.IdeaDir);
+                Env.WriteAtomic(DoneFile, JsonSerializer.Serialize(list, AppJson.Config));
+            }
+            catch { /* 写不进去不影响主流程 */ }
+        }
+    }
+
+    /// <summary>这件事是不是已经在别处做完了。</summary>
+    public bool DoneBefore(string topic)
+    {
+        var t = (topic ?? "").Trim();
+        if (t.Length == 0) return false;
+        return LoadDone().Any(d => SameTopic(d.Topic, t));
+    }
+
+    /// <summary>清空全局了结表。清完这些事就又能被重新想起来——只在确实要重来时用。</summary>
+    public int ClearDone()
+    {
+        lock (_lock)
+        {
+            try
+            {
+                var n = LoadDone().Count;
+                if (File.Exists(DoneFile)) File.Delete(DoneFile);
+                return n;
+            }
+            catch { return 0; }
+        }
+    }
+
+    /// <summary>两个主题标签是不是同一件事。</summary>
+    public static bool SameTopic(string a, string b)
+    {
+        var na = TextSim.Normalize(a);
+        var nb = TextSim.Normalize(b);
+        if (na.Length == 0 || nb.Length == 0) return false;
+        if (na == nb) return true;
+        if (na.Contains(nb, StringComparison.Ordinal) || nb.Contains(na, StringComparison.Ordinal)) return true;
+        return TextSim.Similarity(na, nb) >= 0.5;
     }
 
     // -- 加权意向 -----------------------------------------------------
@@ -493,17 +743,31 @@ public sealed class IdeaChainStore
         return true;
     }
 
-    /// <summary>按落点直接消费整桶（act 成功发出时用）。</summary>
-    public bool ConsumeByTarget(string kind, string target)
+    /// <summary>按落点消费整桶（act 成功发出时用）。返回消费掉了几个桶。</summary>
+    public int ConsumeByTarget(string kind, string target)
     {
         var all = LoadWeights();
-        var key = IdeaWeight.KeyOf(kind, target);
-        if (!all.TryGetValue(key, out var hit)) return false;
 
-        hit.Done = true;
-        hit.Weight = 0;
+        // 键是 (kind, target, topic) 三段，但这里原来拿两段去查，于是永远查不到——
+        // 主题为空的那条键正好等于两段，只有它能命中，而实盘每条都带主题。
+        // 结果就是 idea.weight.consumed 一次都没涨过，做完的事还挂在账上继续被想起。
+        var prefix = IdeaWeight.KeyOf(kind, target);
+
+        var hits = all
+            .Where(kv => kv.Key == prefix || kv.Key.StartsWith(prefix + "|", StringComparison.Ordinal))
+            .Select(kv => kv.Value)
+            .ToList();
+
+        if (hits.Count == 0) return 0;
+
+        foreach (var hit in hits)
+        {
+            hit.Done = true;
+            hit.Weight = 0;
+        }
+
         SaveWeights(all.Values.Where(w => !w.Done).ToList());
-        return true;
+        return hits.Count;
     }
 
     /// <summary>删掉一条。</summary>

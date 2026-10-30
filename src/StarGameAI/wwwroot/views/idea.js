@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    思想层页：在线状态（P1）+ 配额与准入记账（P2）
    两层都还不调模型：P1 判「现在能不能打扰这个人」，P2 判「这条想法准不准」
    ============================================================ */
@@ -78,7 +78,11 @@ export function render(container, api) {
       h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => load() }, '刷新')),
     card('加权意向', [weightsHost],
       h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => loadWeights() }, '刷新')),
-    card('最近几轮（发散 » 收敛）', [roundsHost]),
+    card('最近几轮（发散 » 收敛）', [roundsHost],
+      h('button', {
+        class: 'btn btn-ghost btn-sm', type: 'button',
+        onclick: (e) => resetChain(e.target),
+      }, '重置')),
     card('最近记账', [counterHost, ledgerHost]),
     card('投递一条想法（试闸门）', [buildTester(), testResult])
   );
@@ -89,10 +93,12 @@ export function render(container, api) {
     sent: '主动说话了',
     no_idea: '想了，但决定什么都不做',
     blocked: '被闸门拦下',
+    suppressed: '这件事已经提过',
+    held: '先压着不做',
     error: '出错',
     skipped: '跳过',
   };
-  const OUTCOME_KIND = { sent: 'ok', no_idea: 'muted', blocked: 'warn', error: 'danger', skipped: 'muted' };
+  const OUTCOME_KIND = { sent: 'ok', no_idea: 'muted', blocked: 'warn', error: 'danger', skipped: 'muted', suppressed: 'muted', held: 'warn' };
   const PHASE_KIND = { '发散中': 'accent', '收敛中': 'warn', '发送中': 'ok' };
 
   function paintStatus(s) {
@@ -219,6 +225,7 @@ export function render(container, api) {
       ['发散·记忆碎片', r.ms_div_self],
       ['收敛', r.ms_converge],
       ['加权合并', r.ms_weight],
+      ['落点与时机', r.ms_route],
     ].filter(([, ms]) => typeof ms === 'number' && ms > 0);
 
     const total = steps.reduce((a, [, ms]) => a + ms, 0);
@@ -379,6 +386,30 @@ export function render(container, api) {
     return String(v).replace(/0+$/, '').replace(/\.$/, '');
   }
 
+  // 重置：把各落点正在带的念头清空，下一轮从白纸开始想。
+  //
+  // 存在的理由：念头会一轮一轮往下滚，上一轮的结论被当成材料再喂回去，
+  // 于是越想越像、越像越确认，最后卡在同一个主题上出不来。这道口子给人一个
+  // 「别再接着那条线想了」的开关，而不用去改配置或者干等衰减。
+  async function resetChain(btn) {
+    if (!window.confirm(
+      '清掉所有落点正在带的念头？下一轮会从空白开始想，不会再把上一轮的内容带进去。\n\n' +
+      '已经提过的事仍然不会再提——那是另一道锁，在「加权意向」那张卡上。')) return;
+
+    btn.disabled = true;
+    try {
+      const r = await api('/api/idea/chain/reset', { method: 'POST', body: JSON.stringify({}) });
+      const n = (r.cleared || []).length;
+      toast(n > 0 ? '已重置 ' + n + ' 个落点' : '没有落点在带念头，不用重置',
+        n > 0 ? 'ok' : 'warn');
+      load();
+    } catch (err) {
+      toast('重置失败：' + err.message, 'danger');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   function paintRounds(rounds) {
     const list = rounds || [];
     if (list.length === 0) {
@@ -520,6 +551,13 @@ export function render(container, api) {
       if (r.detail) settled.push(h('div', { class: 'stage-line' },
         h('span', { class: 'stage-key' }, '原因'),
         h('span', { class: 'stage-val muted' }, r.detail)));
+    } else if (r.outcome === 'held') {
+      settled.push(h('div', { class: 'stage-line' },
+        h('span', { class: 'stage-key' }, badge('先压着', 'warn')),
+        h('span', { class: 'stage-val' }, r.why || '')));
+      if (r.detail) settled.push(h('div', { class: 'stage-line' },
+        h('span', { class: 'stage-key' }, '原因'),
+        h('span', { class: 'stage-val muted' }, r.detail)));
     } else if (r.outcome === 'error') {
       settled.push(h('div', { class: 'stage-line' },
         h('span', { class: 'stage-key' }, badge('出错', 'danger')),
@@ -528,6 +566,21 @@ export function render(container, api) {
       settled.push(h('div', { class: 'stage-line' },
         h('span', { class: 'stage-key' }, badge('什么都没做', 'muted')),
         h('span', { class: 'stage-val muted' }, r.why || '')));
+    }
+
+    // 落点与时机的判定：这一轮打算在哪儿说、什么点说、会不会打扰
+    const route = r.route;
+    if (route) {
+      settled.push(h('div', { class: 'stage-line' },
+        h('span', { class: 'stage-key' }, '怎么发'),
+        h('span', { class: 'stage-val' },
+          (route.channel === 'group' ? '群里' : route.channel === 'none' ? '没地方说' : '私聊')
+          + (route.target ? ' → ' + route.target : '')
+          + '｜' + (route.when === 'later' ? '等会儿' : '现在')
+          + (route.disturb ? '｜会打扰' : ''))));
+      if (route.why) settled.push(h('div', { class: 'stage-line' },
+        h('span', { class: 'stage-key' }, '判断'),
+        h('span', { class: 'stage-val muted' }, route.why)));
     }
 
     const stage4 = h('div', { class: 'stage' },
@@ -872,6 +925,8 @@ export function render(container, api) {
       forget: numValue('遗忘门槛', wt.forget_below, '0.01', '掉到这个值以下整条移除（完全遗忘）'),
       buckets: numValue('最多保留几个落点', wt.max_buckets, '1'),
       items: numValue('一个落点最多几件事', wt.max_items, '1'),
+      cooldown: numValue('同一件事提过之后安静多久（分钟）', wt.proposal_cooldown_minutes, '5',
+        '被闸拦下的也算提过；已经有结果的事则永久不再提'),
     };
 
     const intentBoxes = INTENTS.map(([key, label]) => {
@@ -945,6 +1000,7 @@ export function render(container, api) {
         forget_below: wf.forget.get(),
         max_buckets: wf.buckets.get(),
         max_items: wf.items.get(),
+        proposal_cooldown_minutes: wf.cooldown.get(),
       },
     };
 

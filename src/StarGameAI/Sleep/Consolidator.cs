@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
 using StarGameAI.Llm;
@@ -171,12 +171,17 @@ public sealed class Consolidator
 
     public void RaiseSignal(string reason)
     {
+        // 必须写成**一行一条**。
+        //
+        // 这里原来用的是 AppJson.Config，它带 WriteIndented，一条信号会摊成五行；
+        // 而 Signals() 是按行反序列化的，于是每一行都是坏行、全被跳过，
+        // HasPendingSignal() 恒为 false —— AI 调 request_sleep 永远"已记下"，永远不真睡。
         var line = JsonSerializer.Serialize(new SleepSignal
         {
             Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Reason = reason.Length > 200 ? reason[..200] : reason,
             Consumed = false,
-        }, AppJson.Config);
+        }, AppJson.Options);
 
         Directory.CreateDirectory(_env.SleepDir);
         File.AppendAllText(SignalFile, line + "\n");
@@ -184,21 +189,83 @@ public sealed class Consolidator
 
     public List<SleepSignal> Signals()
     {
-        var list = new List<SleepSignal>();
-        if (!File.Exists(SignalFile)) return list;
+        if (!File.Exists(SignalFile)) return new List<SleepSignal>();
 
-        foreach (var line in File.ReadAllLines(SignalFile))
+        try
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            return ParseSignals(File.ReadAllText(SignalFile)).TakeLast(100).ToList();
+        }
+        catch { return new List<SleepSignal>(); }
+    }
+
+    /// <summary>
+    /// 把整个文件读成一串信号：一行一条的格式和老的缩进格式都能吃。
+    ///
+    /// 老格式（一条占五行）还留在盘上，只按行读会把它们全当坏行丢掉，
+    /// 所以按行读不出来时退一步做整体切分，把这批历史信号救回来。
+    /// </summary>
+    private static List<SleepSignal> ParseSignals(string text)
+    {
+        var list = new List<SleepSignal>();
+
+        foreach (var line in text.Split('\n'))
+        {
+            var s = line.Trim();
+            if (s.Length == 0) continue;
+
             try
             {
-                var s = JsonSerializer.Deserialize<SleepSignal>(line, AppJson.Config);
-                if (s is not null) list.Add(s);
+                var one = JsonSerializer.Deserialize<SleepSignal>(s, AppJson.Options);
+                if (one is not null) list.Add(one);
             }
-            catch { /* 跳过坏行 */ }
+            catch { /* 不是完整一条，交给下面的整体切分 */ }
         }
 
-        return list.TakeLast(100).ToList();
+        if (list.Count > 0) return list;
+
+        // 整体切分：按大括号配平取出一个个对象（字符串里的括号要跳过）
+        var depth = 0;
+        var start = -1;
+        var inStr = false;
+        var esc = false;
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+
+            if (inStr)
+            {
+                if (esc) esc = false;
+                else if (ch == '\\') esc = true;
+                else if (ch == '"') inStr = false;
+                continue;
+            }
+
+            if (ch == '"') { inStr = true; continue; }
+
+            if (ch == '{')
+            {
+                if (depth == 0) start = i;
+                depth++;
+                continue;
+            }
+
+            if (ch != '}' || depth == 0) continue;
+
+            depth--;
+            if (depth != 0 || start < 0) continue;
+
+            try
+            {
+                var one = JsonSerializer.Deserialize<SleepSignal>(text[start..(i + 1)], AppJson.Options);
+                if (one is not null) list.Add(one);
+            }
+            catch { /* 切出来还是坏的，跳过 */ }
+
+            start = -1;
+        }
+
+        return list;
     }
 
     public bool HasPendingSignal() => Signals().Any(s => !s.Consumed);
@@ -212,22 +279,15 @@ public sealed class Consolidator
 
         try
         {
-            var lines = File.ReadAllLines(SignalFile);
-            var rewritten = new List<string>();
+            // 走同一个解析器：老缩进格式也会被读出来，顺便在这一步改写成行式，
+            // 不然那几条历史信号永远消费不掉。
+            var all = ParseSignals(File.ReadAllText(SignalFile));
+            if (all.Count == 0) return;
 
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                SleepSignal? s;
-                try { s = JsonSerializer.Deserialize<SleepSignal>(line, AppJson.Config); }
-                catch { rewritten.Add(line); continue; }
+            foreach (var s in all) s.Consumed = true;
 
-                if (s is null) { rewritten.Add(line); continue; }
-                s.Consumed = true;
-                rewritten.Add(JsonSerializer.Serialize(s, AppJson.Config));
-            }
-
-            Env.WriteAtomic(SignalFile, string.Join("\n", rewritten) + "\n");
+            var body = string.Join("\n", all.Select(s => JsonSerializer.Serialize(s, AppJson.Options))) + "\n";
+            Env.WriteAtomic(SignalFile, body);
         }
         catch (Exception ex)
         {

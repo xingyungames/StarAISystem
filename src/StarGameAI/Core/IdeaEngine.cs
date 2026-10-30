@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using StarGameAI.Gateway;
@@ -75,6 +75,15 @@ public sealed class IdeaRound
     public int MsDivSelf { get; set; }
     public int MsConverge { get; set; }
     public int MsWeight { get; set; }
+
+    /// <summary>「怎么发、什么时候发」花了多少毫秒。</summary>
+    public int MsRoute { get; set; }
+
+    /// <summary>落点与时机的判定结果。没开这一层就是 null。</summary>
+    public RouteVerdict? Route { get; set; }
+
+    /// <summary>真正发到哪儿。跟 Target 不同就说明落点被改过道。</summary>
+    public string SentTo { get; set; } = "";
     /// <summary>这一轮整理出来的加权意向（合并结果）。</summary>
     public WeightAgent.MergeOutcome? Weights { get; set; }
     /// <summary>收敛出的「思绪」：把散乱联想压成一句连贯的内在念头。</summary>
@@ -138,6 +147,7 @@ public sealed class IdeaEngine : BackgroundService
     private readonly Metrics _metrics;
     private readonly IntentAgent _intent;
     private readonly WeightAgent _weights;
+    private readonly RouteAgent _route;
     private readonly ILogger<IdeaEngine> _log;
 
     private readonly ConcurrentQueue<IdeaRound> _rounds = new();
@@ -152,7 +162,7 @@ public sealed class IdeaEngine : BackgroundService
     public IdeaEngine(Env env, Activity activity, Presence presence, Contacts contacts,
         Store store, Persona persona, ChatLog chatLog, Sender sender, Dedup dedup,
         IdeaGate gate, IdeaChainStore chains, DeepSeekClient llm, Tracer tracer, Metrics metrics,
-        IntentAgent intent, WeightAgent weights, ILogger<IdeaEngine> log)
+        IntentAgent intent, WeightAgent weights, RouteAgent route, ILogger<IdeaEngine> log)
     {
         _env = env;
         _activity = activity;
@@ -170,6 +180,7 @@ public sealed class IdeaEngine : BackgroundService
         _metrics = metrics;
         _intent = intent;
         _weights = weights;
+        _route = route;
         _log = log;
     }
 
@@ -418,6 +429,50 @@ public sealed class IdeaEngine : BackgroundService
             .ToList();
     }
 
+    /// <summary>现在能去说话的地方：白名单群 + 能私聊的人。落点判定只在这张表里挑。</summary>
+    private List<RouteSlot> Slots()
+    {
+        var list = new List<RouteSlot>();
+
+        foreach (var gid in _env.Server.Whitelist.Groups)
+            list.Add(new RouteSlot("group", gid, "群（群号 " + gid + "）"));
+
+        foreach (var c in _contacts.All())
+        {
+            if (!_contacts.IsPrivatePartner(c.UserId)) continue;
+
+            var name = c.Name.Trim();
+            if (name.Length == 0) name = c.Aliases.FirstOrDefault() ?? c.UserId;
+            list.Add(new RouteSlot("private", c.UserId, "私聊 " + name + "（QQ " + c.UserId + "）"));
+        }
+
+        return list;
+    }
+
+    private static string NowText()
+    {
+        var now = DateTime.Now;
+        return now.ToString("yyyy-MM-dd HH:mm") + "，星期" + "日一二三四五六"[(int)now.DayOfWeek];
+    }
+
+    /// <summary>对方此刻在不在、在干嘛。判时机要用。</summary>
+    private string PresenceText(string target)
+    {
+        var uid = IdeaGate.UserOf(target);
+        if (uid.Length == 0) return "";
+
+        try
+        {
+            var pv = _presence.Effective(uid);
+            if (pv is null) return "";
+            return "对方现在：" + pv.State + "（" + pv.Source + (pv.Note.Length > 0 ? "：" + pv.Note : "") + "）";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     /// <summary>这个会话今天最后一条消息的时间；没说过话返回 0。</summary>
     private long LastMessageTs(string scope)
     {
@@ -658,6 +713,22 @@ public sealed class IdeaEngine : BackgroundService
                 _log.LogInformation("思想链在原地踏步：{Target} 连续 {N} 轮都在「{Topic}」",
                     target, round.TopicRepeat, topicKey);
 
+            // 这件事已经提过了，就别再想一遍。
+            //
+            // 实盘教训：同一件事 26 轮里提了 26 次，18 次被闸拦下，但被拦的那一轮
+            // 什么都没记住，于是下一轮接着提。闸只挡「发出去」，挡不住「再想一次」。
+            // 这里在加权和动作之前就掐掉，连 token 都不再花在它身上。
+            if (IsSuppressed(chain, topicKey))
+            {
+                round.Outcome = "suppressed";
+                round.Why = "「" + topicKey + "」已经提过了";
+                round.Detail = round.Why;
+                _metrics.Inc("idea.suppressed");
+                _log.LogInformation("同主题已提过，本轮丢下：{Target} / {Topic}", target, topicKey);
+                Finish(round, sw);
+                return;
+            }
+
             if (topicKey.Length > 0)
             {
                 chain.Topic = topicKey;
@@ -746,6 +817,66 @@ public sealed class IdeaEngine : BackgroundService
             var chosen = action;
             if (chosen.Target.Length == 0) chosen.Target = target;
 
+            // 模型经常把「发到哪儿」写进 intent（intent=private / intent=group）。
+            // 那不是动作类型，落点。硬当意图用，会被白名单判成「意图不在允许列表」拦掉。
+            // 实盘 23:00 / 23:05 / 23:10 / 00:05 那四条本该放行的话就是这么被拦的。
+            chosen.Intent = NormalizeIntent(chosen.Intent);
+
+            // ---- 怎么发、什么时候发
+            //
+            // 收敛只说了「这件事要办」，没说在哪儿办、这个点办合不合适。
+            // 少了这一步，实盘就会冒出两件事：同一句问话群里说一次私聊又说一次；
+            // 半夜十二点发消息问人醒着吗。
+            //
+            // 判下来做不了（时机不对 / 会打扰 / 没合适的地方）就先压着：
+            // 这件事在停放的这几小时里**不进下一轮的任何输入**，所以不会被反复想起、
+            // 反复换措辞重拟。到期再拿出来，那时时间跨度大了，原本做不了的往往就能做了。
+            if (_env.Idea.Route.Enabled)
+            {
+                var swRoute = System.Diagnostics.Stopwatch.StartNew();
+                var verdict = await _route.DecideAsync(
+                    chosen.Text, chosen.Origin, chosen.Target, Slots(), NowText(),
+                    PresenceText(target), ct);
+                swRoute.Stop();
+                round.MsRoute = (int)swRoute.ElapsedMilliseconds;
+                round.Route = verdict;
+                round.Tokens += verdict.Tokens;
+
+                if (!verdict.Doable || verdict.When != "now")
+                {
+                    var holdWhy = verdict.Why.Length > 0 ? verdict.Why : "现在不合适，先压着";
+                    _chains.Hold(chain, round.Topic, holdWhy, _env.Idea.Route.HoldMinutes);
+
+                    round.Outcome = "held";
+                    round.Why = holdWhy;
+                    round.Detail = "先不做：" + holdWhy;
+                    round.Decisions.Add(new IdeaDecision
+                    {
+                        Kind = "nothing",
+                        Target = chosen.Target,
+                        Text = chosen.Text,
+                        Reason = holdWhy,
+                    });
+
+                    _metrics.Inc("idea.held");
+                    _log.LogInformation("这件事先压着（{Until} 分钟后再说）：{Why}",
+                        _env.Idea.Route.HoldMinutes, holdWhy);
+
+                    Finish(round, sw);
+                    return;
+                }
+
+                if (!string.Equals(verdict.Target, chosen.Target, StringComparison.Ordinal))
+                {
+                    _log.LogInformation("落点改了：{From} → {To}（{Why}）",
+                        chosen.Target, verdict.Target, verdict.Why);
+                    chosen.Target = verdict.Target;
+                }
+
+                chosen.Intent = verdict.Channel == "group" ? "speech" : chosen.Intent;
+                if (verdict.Why.Length > 0) chosen.Reason = verdict.Why;
+            }
+
             round.Decisions.Add(new IdeaDecision
             {
                 Kind = "speak",
@@ -768,6 +899,11 @@ public sealed class IdeaEngine : BackgroundService
                 round.Outcome = "blocked";
                 round.BlockedBy = record.BlockedBy;
                 round.Detail = record.BlockedDetail;
+
+                // 被闸拦下也是一次「提过了」：占个位，冷却期内别再想它。
+                // 不占位的话下一轮还会原样再提一遍，闸一直拦、token 一直烧。
+                MarkResolved(chain, round.Topic, chosen.Target, chosen.Text, delivered: false);
+
                 Finish(round, sw);
                 return;
             }
@@ -790,6 +926,10 @@ public sealed class IdeaEngine : BackgroundService
             round.Outcome = "sent";
             round.Spoke = chosen.Text;
 
+            // 实际送到哪儿。落点判定可能把 group:X 改成 private:Y，
+            // 这时 round.Target（这回在想谁）和真正发到的地方已经不是一回事了。
+            round.SentTo = chosen.Target;
+
             // ---- 消费：真的做了，就把对应落点的加权意向划掉
             //
             // 这是"卡心结"的正解。以前 action 发出去与加权意向毫无关系，
@@ -804,11 +944,11 @@ public sealed class IdeaEngine : BackgroundService
                 // 不清会有个死循环：这一轮思绪写「梦想还欠着」，下一轮发散读到
                 // 「上一版的思绪：梦想还欠着」，于是又想一遍、又答一遍。
                 // 实测同一件事 50 分钟内被重做 6 次。
-                MarkResolved(chain, round.Topic, chosen.Target, chosen.Text);
+                MarkResolved(chain, round.Topic, chosen.Target, chosen.Text, delivered: true);
 
-                if (consumed)
+                if (consumed > 0)
                 {
-                    round.Detail = "已消费对应加权意向：" + IdeaWeight.TitleOf(ck, "", ct2);
+                    round.Detail = "已消费 " + consumed + " 条加权意向：" + IdeaWeight.TitleOf(ck, "", ct2);
                     _metrics.Inc("idea.weight.consumed");
                 }
             }
@@ -826,7 +966,7 @@ public sealed class IdeaEngine : BackgroundService
                     Ts = Now(),
                     MessageId = sends[i].MessageId,
                     TraceId = "idea_" + round.Id,
-                    Scope = target,
+                    Scope = chosen.Target,
                     UserId = _env.Server.SelfId,
                     Name = "我",
                     Role = "self",
@@ -838,7 +978,7 @@ public sealed class IdeaEngine : BackgroundService
 
             _metrics.Inc("idea.sent");
             _log.LogInformation("思想层发言 → {Target}：{Text}（理由：{Reason}）",
-                target, chosen.Text, chosen.Reason);
+                chosen.Target, chosen.Text, chosen.Reason);
 
             Finish(round, sw);
         }
@@ -1075,25 +1215,45 @@ public sealed class IdeaEngine : BackgroundService
     /// 于是"我还欠着"这句会自己滚下去，永远停不下来。
     /// 了结之后必须切断这条链，否则同一件事会被反复重做。
     /// </summary>
-    private void MarkResolved(IdeaChain chain, string topic, string target, string did)
+    private void MarkResolved(IdeaChain chain, string topic, string target, string did, bool delivered)
     {
         var t = (topic ?? "").Trim();
         if (t.Length == 0) return;
 
-        chain.Resolved.Insert(0, new ResolvedTopic
+        // 同主题只留一条：送达就升格成永久了结，没送达只刷新占位时间
+        var hit = chain.Resolved.FirstOrDefault(r => SameTopic(r.Topic, t));
+        if (hit is not null)
         {
-            Topic = t.Length > 24 ? t[..24] : t,
-            Ts = Now(),
-            Target = target,
-            Did = did.Length > 80 ? did[..80] : did,
-        });
+            hit.Ts = Now();
+            hit.Did = did.Length > 80 ? did[..80] : did;
+            hit.Target = target;
+            hit.Delivered |= delivered;
+        }
+        else
+        {
+            chain.Resolved.Insert(0, new ResolvedTopic
+            {
+                Topic = t.Length > 24 ? t[..24] : t,
+                Ts = Now(),
+                Target = target,
+                Did = did.Length > 80 ? did[..80] : did,
+                Delivered = delivered,
+            });
+        }
 
         if (chain.Resolved.Count > 20) chain.Resolved = chain.Resolved.Take(20).ToList();
 
-        // 切断承载链：思绪、上一版念头、主题标签都清掉，下一轮从干净的起点想
-        chain.Thought = "";
-        chain.Thoughts.Clear();
-        chain.Topics.RemoveAll(x => SameTopic(x, t));
+        // 只有送达才切断承载链；没送达只是占位，思绪还要留着等下一次机会
+        if (delivered)
+        {
+            chain.Thought = "";
+            chain.Thoughts.Clear();
+            chain.Topics.RemoveAll(x => SameTopic(x, t));
+
+            // 写进全局了结表：做完的事**所有落点**都不许再提。
+            // 只记在本链上的话，换个地方（群里 → 私聊）又会重新提一遍。
+            _chains.AddDone(t, target);
+        }
 
         chain.UpdatedAt = Now();
         _chains.Save(chain);
@@ -1136,14 +1296,13 @@ public sealed class IdeaEngine : BackgroundService
 
         if (inputs.PrevThought.Length > 0)
             sb.AppendLine().AppendLine("【上一版的思绪】").AppendLine(inputs.PrevThought);
-        // 已经了结的事：明说不要再提，否则记忆碎片会把它重新拉回来
+        // 做完的事只报个数，不复述内容。
+        //
+        // 原来这里把每条的 topic 和 did 都列出来，等于每轮都把「我做过什么」重新念一遍。
+        // 模型读到就会顺着它联想，于是「做完了还在想」永远停不下来。
+        // 防重提已经由 resolved + 全局了结表在代码层挡住了，不需要再喂给模型看。
         if (chain.Resolved.Count > 0)
-        {
-            sb.AppendLine().AppendLine("【已经了结的事】（做过了，不要再主动重提）");
-            foreach (var r in chain.Resolved.Take(6))
-                sb.Append("- ").Append(r.Topic).Append("（").Append(r.Did.Length > 30 ? r.Did[..30] : r.Did).AppendLine("）");
-            sb.AppendLine();
-        }
+            sb.AppendLine().AppendLine($"【已经了结的】{chain.Resolved.Count} 件（都不必再想，也不必再提）");
 
 
         if (inputs.PrevThoughts.Count > 0)
@@ -1178,8 +1337,14 @@ public sealed class IdeaEngine : BackgroundService
                 }) + "】\n" + text.Trim());
 
         // 思想权重：一件事一条，别把整桶缝成一句塞进上下文
+        //
+        // 停放中的桶要跳过：既然判过「现在做不了」，就别再拿它喂发散，
+        // 否则下一轮照样读得到、照样想一遍，压着就等于没压。
+        var held = _chains.HeldTopics(chain);
         foreach (var b in _chains.TopWeights(5))
         {
+            if (held.Count > 0 && held.Any(h => IdeaChainStore.SameTopic(h, b.Topic))) continue;
+
             var title = b.Title.Length > 0 ? b.Title : IdeaWeight.TitleOf(b.Kind, b.Who, b.Target);
             inputs.Weights.Add($"{title}（{b.Weight:F2}）：{string.Join("；", b.Items.Select(i => i.Text))}");
         }
@@ -1676,16 +1841,50 @@ public sealed class IdeaEngine : BackgroundService
     }
 
 
-    /// <summary>两个主题标签是不是同一件事。</summary>
-    private static bool SameTopic(string a, string b)
+    /// <summary>这个话题现在是不是该闭嘴了（做过了 / 停放着 / 冷却中）。</summary>
+    private bool IsSuppressed(IdeaChain chain, string topic)
     {
-        var na = Core.TextSim.Normalize(a);
-        var nb = Core.TextSim.Normalize(b);
-        if (na.Length == 0 || nb.Length == 0) return false;
-        if (na == nb) return true;
-        if (na.Contains(nb, StringComparison.Ordinal) || nb.Contains(na, StringComparison.Ordinal)) return true;
-        return Core.TextSim.Similarity(na, nb) >= 0.5;
+        var t = (topic ?? "").Trim();
+        if (t.Length == 0) return false;
+
+        // 已经在**任何一个**落点做完了 → 所有落点都闭嘴。
+        //
+        // 实盘教训：同一件事在群里说了一次、私聊又说了一次。每条链只管自己那份
+        // resolved，A 落点做完 B 落点根本不知道，于是换个地方又提一遍。
+        if (_chains.DoneBefore(t)) return true;
+
+        // 判过「现在做不了」而停放中 → 先别想它
+        if (_chains.IsHeld(chain, t)) return true;
+
+        var now = Now();
+        var cd = Math.Max(1, _env.Idea.Weight.ProposalCooldownMinutes) * 60L;
+
+        foreach (var r in chain.Resolved)
+        {
+            if (!SameTopic(r.Topic, t)) continue;
+            if (r.Delivered) return true;
+            if (now - r.Ts < cd) return true;
+        }
+
+        return false;
     }
+
+
+    /// <summary>把模型写成落点的 intent 折回真正的动作类型。</summary>
+    private static string NormalizeIntent(string intent)
+    {
+        var s = (intent ?? "").Trim().ToLowerInvariant();
+        if (s.Length == 0) return "speech";
+
+        return s switch
+        {
+            "private" or "私聊" or "group" or "群" or "群里" or "speech_group" => "speech",
+            _ => s,
+        };
+    }
+
+    /// <summary>两个主题标签是不是同一件事。</summary>
+    private static bool SameTopic(string a, string b) => IdeaChainStore.SameTopic(a, b);
 
     /// <summary>从尾部数：连续多少条和给定主题是同一件事。</summary>
     private static int TrailingRepeat(List<string> topics, string topic)

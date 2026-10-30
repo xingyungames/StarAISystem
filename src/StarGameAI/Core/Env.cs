@@ -1,4 +1,4 @@
-﻿using System.Text.Encodings.Web;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -236,6 +236,16 @@ public sealed class WeightConfig
     /// <summary>一个桶里最多几条事项（一件事一条，防止又缝成流水句）。</summary>
     public int MaxItems { get; set; } = 6;
 
+    /// <summary>
+    /// 同一主题提案后的占位冷却（分钟）。
+    ///
+    /// 提案一旦生成就占位，冷却期内不再重复拟同一件事。
+    /// 为什么需要：实测「梦想」那一件事在 14 小时里生了 26 条提案，
+    /// 其中 18 条被静默时段/冷却/白名单拦下——拦下不等于了结，
+    /// 于是每 5 分钟换个措辞再拟一遍。
+    /// </summary>
+    public int ProposalCooldownMinutes { get; set; } = 60;
+
     /// <summary>够重却一直没兑现多少轮之后，承认做不到、衰减加速。</summary>
     public int StaleRounds { get; set; } = 14;
 
@@ -439,6 +449,22 @@ public sealed class IdeaConfig
     public IntentConfig Intent { get; set; } = new();
     public WeightConfig Weight { get; set; } = new();
     public ChainConfig Chain { get; set; } = new();
+    public RouteConfig Route { get; set; } = new();
+}
+
+/// <summary>动手之前的「怎么发、什么时候发」。</summary>
+public sealed class RouteConfig
+{
+    /// <summary>是否先判一次落点与时机。关掉就照收敛给的目标直接发。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 判定「现在做不了」之后停放多久（分钟）。
+    ///
+    /// 停放期间这件事**不进下一轮的任何输入**，所以不会被反复想起、反复重拟。
+    /// 到期之后重新拿出来——那时时间跨度大了，原本做不了的事往往就能做了。
+    /// </summary>
+    public int HoldMinutes { get; set; } = 180;
 }
 
 public sealed class ToolsPolicy
