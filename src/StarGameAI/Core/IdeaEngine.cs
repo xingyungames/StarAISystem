@@ -142,6 +142,7 @@ public sealed class IdeaEngine : BackgroundService
     private readonly Dedup _dedup;
     private readonly IdeaGate _gate;
     private readonly IdeaChainStore _chains;
+    private readonly IdeaStore _ideaStore;
     private readonly DeepSeekClient _llm;
     private readonly Tracer _tracer;
     private readonly Metrics _metrics;
@@ -161,7 +162,8 @@ public sealed class IdeaEngine : BackgroundService
 
     public IdeaEngine(Env env, Activity activity, Presence presence, Contacts contacts,
         Store store, Persona persona, ChatLog chatLog, Sender sender, Dedup dedup,
-        IdeaGate gate, IdeaChainStore chains, DeepSeekClient llm, Tracer tracer, Metrics metrics,
+        IdeaGate gate, IdeaChainStore chains, IdeaStore ideaStore, DeepSeekClient llm,
+        Tracer tracer, Metrics metrics,
         IntentAgent intent, WeightAgent weights, RouteAgent route, ILogger<IdeaEngine> log)
     {
         _env = env;
@@ -175,6 +177,7 @@ public sealed class IdeaEngine : BackgroundService
         _dedup = dedup;
         _gate = gate;
         _chains = chains;
+        _ideaStore = ideaStore;
         _llm = llm;
         _tracer = tracer;
         _metrics = metrics;
@@ -1253,6 +1256,10 @@ public sealed class IdeaEngine : BackgroundService
             // 写进全局了结表：做完的事**所有落点**都不许再提。
             // 只记在本链上的话，换个地方（群里 → 私聊）又会重新提一遍。
             _chains.AddDone(t, target);
+
+            // 同时进思想储存，带上「做了什么」。
+            // 做完就删的话，下一轮没有可长的地方，只能又飘回原来那件事。
+            _ideaStore.AddDone(t, did, "", target);
         }
 
         chain.UpdatedAt = Now();
@@ -1272,8 +1279,8 @@ public sealed class IdeaEngine : BackgroundService
 
         if (inputs.Memories.Count > 0)
         {
-            sb.AppendLine().AppendLine("【我记着的碎片】");
-            foreach (var m in inputs.Memories) sb.Append("- 记得：").AppendLine(m);
+            sb.AppendLine().AppendLine("【我整理出来的】");
+            foreach (var m in inputs.Memories) sb.Append("- ").AppendLine(m);
         }
 
         if (inputs.Profile.Count > 0)
@@ -1363,8 +1370,22 @@ public sealed class IdeaEngine : BackgroundService
                     (e.IsSelf ? "我" : (e.Name.Length > 0 ? e.Name : e.UserId)) + "：" +
                     (e.Text.Length > 30 ? e.Text[..30] : e.Text));
 
-            // 记忆碎片
-            inputs.Memories.AddRange(RememberedFragments(target, 3));
+            // 记忆碎片：从**思想储存**里取，不再直接读浅层碎片。
+            //
+            // 浅层碎片是原料：一段话能拆出七八条，三条说的还是同一件事，
+            // 直接拿它发散，长出来的必然还是那几句。储存里是「一件事一条」，
+            // 而且没被取用过的排在前面，同一条不会连着用。
+            var seeds = _ideaStore.Top(4);
+            foreach (var s in seeds)
+            {
+                inputs.Memories.Add(s.Thing
+                    + (s.Open.Length > 0 ? "（还没做完：" + s.Open + "）" : ""));
+
+                if (s.Grain.Count > 0)
+                    inputs.Memories.Add("　原话：" + string.Join(" / ", s.Grain.Take(2)));
+            }
+
+            _ideaStore.MarkHit(seeds.Select(s => s.Id));
 
             // 画像与群体模式
             if (target.StartsWith("group:", StringComparison.Ordinal))

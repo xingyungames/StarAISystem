@@ -1482,6 +1482,80 @@ public static class AdminApi
             return Results.Json(new { ok = true, cleared, doneCleared });
         });
 
+        // 思想储存：发散只看这里，不再直接吃浅层碎片
+        app.MapGet("/api/idea/store", (HttpContext ctx, Env env, IdeaStore store) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var all = store.Load();
+            return Results.Json(new
+            {
+                items = all.OrderByDescending(i => i.UpdatedAt).Select(i => new
+                {
+                    id = i.Id,
+                    kind = i.Kind,
+                    thing = i.Thing,
+                    grain = i.Grain,
+                    open = i.Open,
+                    source = i.Source,
+                    state = i.State,
+                    hits = i.Hits,
+                    updated_at = i.UpdatedAt,
+                }),
+                open = all.Count(i => i.State == "open"),
+                done = all.Count(i => i.State == "done"),
+                seeds = all.Count(i => i.Kind == "seed"),
+                residue = all.Count(i => i.Kind == "residue"),
+            });
+        });
+
+        app.MapPost("/api/idea/store", async (HttpContext ctx, Env env, IdeaStore store) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var body = await ReadJsonAsync(ctx);
+            if (body is null) return Bad("请求体不是合法 JSON");
+
+            var thing = StrOf(body.RootElement, "thing");
+            if (thing.Trim().Length == 0) return Bad("thing 不能为空");
+
+            var item = store.Add(thing, StrOf(body.RootElement, "open"), StrOf(body.RootElement, "source"));
+            Audit(env, "idea.store.add", new { id = item.Id, thing });
+            return Results.Json(new { ok = true, id = item.Id });
+        });
+
+        app.MapDelete("/api/idea/store/{id}", (HttpContext ctx, Env env, IdeaStore store, string id) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+            var n = store.Remove(id);
+            Audit(env, "idea.store.remove", new { id });
+            return Results.Json(new { ok = n > 0 });
+        });
+
+        // 同一件事的不同措辞并成一个桶（四个「梦想」不该各占一个）
+        //
+        // 先跑一遍字符统计（快、不要钱），再让模型认剩下的——换个说法的那种
+        // 字符统计永远认不出来，只能靠语义。
+        app.MapPost("/api/idea/weights/merge-topics", async (
+            HttpContext ctx, Env env, IdeaChainStore chains, WeightAgent weights) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var merged = chains.MergeTopics();
+
+            try
+            {
+                merged += await weights.MergeSameTopicsAsync(ctx.RequestAborted);
+            }
+            catch (Exception ex)
+            {
+                Audit(env, "idea.weight.merge_topics.error", new { error = ex.Message });
+            }
+
+            Audit(env, "idea.weight.merge_topics", new { merged = merged });
+            return Results.Json(new { ok = true, merged = merged });
+        });
+
         app.MapPost("/api/idea/weights/cleanup-legacy", (HttpContext ctx, Env env, IdeaChainStore chains) =>
         {
             if (!Allowed(ctx, env)) return Deny();

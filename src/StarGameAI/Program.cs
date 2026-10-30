@@ -52,6 +52,7 @@ builder.Services.AddSingleton<Identity>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<IdeaGate>();
 builder.Services.AddSingleton<IdeaChainStore>();
+builder.Services.AddSingleton<IdeaStore>();
 builder.Services.AddSingleton<IntentAgent>();
 builder.Services.AddSingleton<WeightAgent>();
 builder.Services.AddSingleton<RouteAgent>();
@@ -96,6 +97,11 @@ try
     var legacyWeights = app.Services.GetRequiredService<IdeaChainStore>().CleanupLegacy();
     if (legacyWeights > 0)
         Console.WriteLine($"[启动] 已合并/清理 {legacyWeights} 条没有落点的历史加权意向");
+
+    // 同一件事的不同措辞并成一个桶：四个「梦想」各占一个桶，发散就会每次都读到四遍
+    var topicMerged = app.Services.GetRequiredService<IdeaChainStore>().MergeTopics();
+    if (topicMerged > 0)
+        Console.WriteLine($"[启动] 已归并 {topicMerged} 条同义的加权意向");
 
     // 用联系人目录校正名字：模型给的名字不可信（出现过代词、也出现过张冠李戴）
     var contactsRef = app.Services.GetRequiredService<Contacts>();

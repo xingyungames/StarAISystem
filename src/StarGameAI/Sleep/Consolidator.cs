@@ -136,13 +136,14 @@ public sealed class Consolidator
     private readonly SleepState _state;
     private readonly DeltaLog _delta;
     private readonly StyleStore _style;
+    private readonly IdeaStore _ideaStore;
     private readonly ILogger<Consolidator> _log;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     public Consolidator(
         Env env, ChatLog chatLog, Store store, Persona persona,
         DeepSeekClient llm, SleepState state, DeltaLog delta, StyleStore style,
-        ILogger<Consolidator> log)
+        IdeaStore ideaStore, ILogger<Consolidator> log)
     {
         _env = env;
         _chatLog = chatLog;
@@ -152,6 +153,7 @@ public sealed class Consolidator
         _state = state;
         _delta = delta;
         _style = style;
+        _ideaStore = ideaStore;
         _log = log;
     }
 
@@ -418,6 +420,174 @@ public sealed class Consolidator
         return map;
     }
 
+    /// <summary>
+    /// 把这段时间的对话整理进思想层储存：一件事一条 + 原话颗粒 + 没做完的部分。
+    ///
+    /// 这一步为什么必须在：思想层发散原来直接吃浅层碎片，而碎片是原料——
+    /// 一段话能拆出七八条，三条说的还是同一件事。原料发散出来的必然还是那几句
+    /// （实盘就是连着三条「星涵怕我被带坏」，发散也只会绕着这句转）。
+    /// </summary>
+    private async Task OrganizeStoreAsync(List<Chunk> chunks, CancellationToken ct)
+    {
+        var lines = chunks
+            .SelectMany(c => c.Entries)
+            .Where(e => e.Text.Trim().Length > 0)
+            .TakeLast(140)
+            .Select(e =>
+            {
+                var who = e.IsSelf ? "我" : (e.Name.Length > 0 ? e.Name : e.UserId);
+                var text = e.Text.Length > 90 ? e.Text[..90] : e.Text;
+                return "[" + e.Scope + "] " + who + "：" + text;
+            })
+            .ToList();
+
+        if (lines.Count == 0) return;
+
+        // 已做完但还没抽出残渣的条目：让模型看出「还剩什么没做」，
+        // 这是「做完之后还能长出新东西」的唯一来源。
+        var pending = _ideaStore.Load()
+            .Where(i => i.State == "done" && i.Open.Length == 0)
+            .Take(6)
+            .ToList();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("【最近的对话】");
+        foreach (var l in lines) sb.AppendLine(l);
+
+        if (pending.Count > 0)
+        {
+            sb.AppendLine().AppendLine("【已经做完、需要看出还剩什么的事】");
+            foreach (var p in pending)
+            {
+                sb.Append("- ").Append(p.Thing);
+                if (p.Grain.Count > 0) sb.Append("（做了：").Append(p.Grain[^1]).Append('）');
+                sb.AppendLine();
+            }
+        }
+
+        LlmResult res;
+        try
+        {
+            res = await _llm.ChatAsync("distill", new[]
+            {
+                ChatMsg.System(StorePrompt),
+                ChatMsg.User(sb.ToString()),
+            }, ct: ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("思想储存：模型调用失败，这轮不整理（{Error}）", ex.Message);
+            return;
+        }
+
+        var got = ParseStoreItems(res.Content ?? "");
+        if (got.Count == 0)
+        {
+            _log.LogInformation("思想储存：这轮没整理出新条目");
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var items = got.Select(x => new StoreItem
+        {
+            Id = "s" + Guid.NewGuid().ToString("N")[..7],
+            Kind = x.kind,
+            Thing = x.thing,
+            Grain = x.grain,
+            Open = x.open,
+            State = x.kind == "residue" ? "done" : "open",
+            CreatedAt = now,
+            UpdatedAt = now,
+        }).ToList();
+
+        _ideaStore.Replace(items);
+        _log.LogInformation("思想储存：整理出 {N} 条（其中残渣 {R} 条）",
+            items.Count, items.Count(i => i.Kind == "residue"));
+    }
+
+    private static List<(string kind, string thing, List<string> grain, string open)> ParseStoreItems(string raw)
+    {
+        var list = new List<(string, string, List<string>, string)>();
+
+        var body = (raw ?? "").Trim();
+        if (body.StartsWith("```", StringComparison.Ordinal))
+        {
+            var nl = body.IndexOf('\n');
+            if (nl > 0) body = body[(nl + 1)..];
+            var end = body.LastIndexOf("```", StringComparison.Ordinal);
+            if (end > 0) body = body[..end];
+            body = body.Trim();
+        }
+
+        var a = body.IndexOf('[');
+        var b = body.LastIndexOf(']');
+        if (a < 0 || b <= a) return list;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body[a..(b + 1)]);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.ValueKind != JsonValueKind.Object) continue;
+
+                var thing = el.TryGetProperty("thing", out var t) && t.ValueKind == JsonValueKind.String
+                    ? (t.GetString() ?? "").Trim()
+                    : "";
+
+                if (thing.Length == 0) continue;
+
+                var kind = el.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String
+                    ? (k.GetString() ?? "").Trim().ToLowerInvariant()
+                    : "seed";
+
+                if (kind is not ("seed" or "residue")) kind = "seed";
+
+                var open = el.TryGetProperty("open", out var o) && o.ValueKind == JsonValueKind.String
+                    ? (o.GetString() ?? "").Trim()
+                    : "";
+
+                var grain = new List<string>();
+                if (el.TryGetProperty("grain", out var g) && g.ValueKind == JsonValueKind.Array)
+                    foreach (var one in g.EnumerateArray())
+                        if (one.ValueKind == JsonValueKind.String)
+                        {
+                            var s = (one.GetString() ?? "").Trim();
+                            if (s.Length > 0) grain.Add(s.Length > 80 ? s[..80] : s);
+                        }
+
+                list.Add((kind, thing.Length > 60 ? thing[..60] : thing, grain, open.Length > 120 ? open[..120] : open));
+            }
+        }
+        catch { /* 解析不出来就当这轮没整理 */ }
+
+        return list;
+    }
+
+    private const string StorePrompt = """
+你在整理一个会自己找事做的 AI 的**思想储存**。
+
+下面给它最近经手的对话。请压成若干条「具体的一件事」。
+
+每条三样东西：
+- thing：一句话说清这件事是什么。要具体（"给星涵写生日祝福"），不要抽象（"在意她"）。
+- grain：撑着这件事的原话片段，一到三条，保留原话里的具体词。
+- open：这件事还没做完的那部分。做完就没什么剩的，写空字符串。
+- kind："seed" 表示从对话里整理出来的种子；"residue" 表示做完之后剩下来的残渣。
+
+硬要求：
+- 一件事一条。不要把几件事缝成一句，也不要把一件事拆成几条。
+- 同一件事换个说法出现多次，只能出一条。
+- 不要写「她很在意我」这类人物评价，那是画像层的事，不是这里的事。
+- 不要编造对话里没有的事。
+- 已经在【已经做完、需要看出还剩什么的事】里列出的，用 kind="residue"，只填 open。
+
+只输出 JSON 数组，不要解释，不要代码块：
+
+[{"kind":"seed","thing":"…","grain":["…"],"open":"…"}]
+""";
+
     private async Task<ConsolidateOutcome> RunInternalAsync(string by, CancellationToken ct)
     {
         var watermark = LoadWatermark();
@@ -461,6 +631,16 @@ public sealed class Consolidator
         {
             try { await CollectStyleCandidatesAsync(capped, ct); }
             catch (Exception ex) { _log.LogWarning("风格样本采集失败：{Error}", ex.Message); }
+        }
+
+        // 3.6 思想储存：把这段对话整理成「一件事一条」，供思想层发散用
+        //
+        // 放这里而不是每轮：整理是慢活，也是一次性批处理，不该占对话延迟。
+        // 思想层只读结果，不再直接吃浅层碎片。
+        if (failed < capped.Count)
+        {
+            try { await OrganizeStoreAsync(capped, ct); }
+            catch (Exception ex) { _log.LogWarning("思想储存整理失败：{Error}", ex.Message); }
         }
 
         // 只要有分片失败就**不推进水位线**：否则那批对话会被永久跳过（静默丢失记忆）。

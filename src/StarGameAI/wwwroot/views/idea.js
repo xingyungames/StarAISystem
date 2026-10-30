@@ -53,6 +53,7 @@ export function render(container, api) {
   const testResult = h('div', {});
   const statusHost = h('div', {});
   const roundsHost = h('div', {});
+  const storeHost = h('div', {});
   const topoHost = h('div', {});
   const wfHost = h('div', {});
   const weightsHost = h('div', {});
@@ -83,6 +84,11 @@ export function render(container, api) {
         class: 'btn btn-ghost btn-sm', type: 'button',
         onclick: (e) => resetChain(e.target),
       }, '重置')),
+    card('思想储存', [storeHost],
+      h('button', {
+        class: 'btn btn-ghost btn-sm', type: 'button',
+        onclick: () => loadStore(),
+      }, '刷新')),
     card('最近记账', [counterHost, ledgerHost]),
     card('投递一条想法（试闸门）', [buildTester(), testResult])
   );
@@ -354,6 +360,20 @@ export function render(container, api) {
         onclick: () => { weightsOpen = !weightsOpen; paintWeights(); },
       }, weightsOpen ? '收起' : ('展开全部 ' + weightItems.length + ' 条')));
     }
+    // 同一件事换个说法各占一个桶时，这里把措辞并掉
+    if (weightItems.length > 1) {
+      foot.push(h('button', {
+        class: 'btn btn-ghost btn-sm', type: 'button',
+        onclick: async () => {
+          try {
+            const r = await api('/api/idea/weights/merge-topics', { method: 'POST' });
+            if (disposed) return;
+            toast(r.merged > 0 ? '已归并 ' + r.merged + ' 条同义意向' : '没有需要归并的', r.merged > 0 ? 'ok' : 'warn');
+            loadWeights();
+          } catch (err) { toast('归并失败：' + err.message, 'danger'); }
+        },
+      }, '归并同义'));
+    }
     if (legacy > 0) {
       foot.push(h('button', {
         class: 'btn btn-ghost btn-sm', type: 'button',
@@ -408,6 +428,43 @@ export function render(container, api) {
     } finally {
       btn.disabled = false;
     }
+  }
+
+  /* ---------------- 思想储存 ---------------- */
+
+  // 发散只看这里，不再直接吃浅层碎片。
+  // 碎片是原料（一段话能拆七八条，三条说同一件事），储存是「一件事一条」。
+  async function loadStore() {
+    try {
+      const s = await api('/api/idea/store');
+      if (disposed) return;
+      paintStore(s);
+    } catch (err) {
+      if (disposed) return;
+      storeHost.replaceChildren(h('div', { class: 'empty' }, '读不到储存：' + err.message));
+    }
+  }
+
+  function paintStore(s) {
+    const items = (s && s.items) || [];
+    if (items.length === 0) {
+      storeHost.replaceChildren(h('div', { class: 'empty' },
+        '储存还是空的。它在睡眠巩固时由「整理」这一步产出——不是每轮都写。'));
+      return;
+    }
+
+    storeHost.replaceChildren(
+      h('div', { class: 'tiny muted', style: 'margin-bottom:8px' },
+        '发散从这里取，取过的排到后面，所以不会总从同一条长。' +
+        '整理出 ' + (s.seeds || 0) + ' 条种子、' + (s.residue || 0) + ' 条残渣，还没了结的 ' + (s.open || 0) + ' 条。'),
+      ...items.slice(0, 12).map((it) => h('div', { class: 'stage-line' },
+        h('span', { class: 'stage-key' },
+          badge(it.kind === 'residue' ? '残渣' : '种子', it.state === 'done' ? 'muted' : 'accent')),
+        h('span', { class: 'stage-val' },
+          (it.thing || '') +
+          (it.open ? '｜还没做完：' + it.open : '') +
+          (it.hits ? '（取过 ' + it.hits + ' 次）' : ''))))
+    );
   }
 
   function paintRounds(rounds) {
@@ -702,6 +759,7 @@ export function render(container, api) {
       paintCounters(idea.counters);
       paintLedger(idea.recent);
       await loadWeights();
+      await loadStore();
     } catch (err) {
       if (disposed || err.status === 401) return;
       presenceHost.replaceChildren(h('div', { class: 'note note-danger' }, '加载失败：' + err.message));

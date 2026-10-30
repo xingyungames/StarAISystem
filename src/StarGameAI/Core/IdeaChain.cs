@@ -460,7 +460,141 @@ public sealed class IdeaChainStore
         if (na.Length == 0 || nb.Length == 0) return false;
         if (na == nb) return true;
         if (na.Contains(nb, StringComparison.Ordinal) || nb.Contains(na, StringComparison.Ordinal)) return true;
-        return TextSim.Similarity(na, nb) >= 0.5;
+        if (TextSim.Similarity(na, nb) >= 0.5) return true;
+
+        // 主题标签很短，几乎每个二元组都是关键词，所以「包含度」比「相似度」更抗改写。
+        //
+        // 实盘:梦想那件事被拆成四个桶——欠星涵的梦想答案 / 没答的梦想 / 梦想答案空着 /
+        // 梦想那题没答。两两算 Jaccard 只有 0.2~0.3，一个都并不上；
+        // 但按「短的那边有多少被长的那边盖住」算，其中三对都到 0.5 以上，
+        // 连起来就是一个簇，四个桶归成一个。
+        return Containment(na, nb) >= 0.5;
+    }
+
+    /// <summary>短的那串二元组有多少比例出现在长的那串里。</summary>
+    private static double Containment(string a, string b)
+    {
+        var (shorter, longer) = a.Length <= b.Length ? (a, b) : (b, a);
+        if (shorter.Length < 2) return 0;
+
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i + 1 < longer.Length; i++) set.Add(longer.Substring(i, 2));
+
+        var total = 0;
+        var hit = 0;
+        for (var i = 0; i + 1 < shorter.Length; i++)
+        {
+            total++;
+            if (set.Contains(shorter.Substring(i, 2))) hit++;
+        }
+
+        return total == 0 ? 0 : (double)hit / total;
+    }
+
+    /// <summary>
+    /// 把同一件事的不同措辞并成一个桶，返回并掉了几个。
+    ///
+    /// 为什么必须先做这一步：「从储存发散」成立的前提是储存里每条都是一件事。
+    /// 同一个落点下四个措辞各成一个桶，发散每次都读到四行同一件事，只能绕着它转——
+    /// 这不是输入材料不够，是同一件事被数了四遍。
+    /// </summary>
+    public int MergeTopics()
+    {
+        var all = LoadWeights();
+        if (all.Count < 2) return 0;
+
+        var merged = 0;
+
+        foreach (var group in all.Values
+                     .GroupBy(w => IdeaWeight.KeyOf(w.Kind, w.Target))
+                     .Where(g => g.Count() > 1)
+                     .ToList())
+        {
+            var list = group.ToList();
+            var parent = Enumerable.Range(0, list.Count).ToArray();
+
+            int Find(int i) => parent[i] == i ? i : parent[i] = Find(parent[i]);
+            void Union(int x, int y)
+            {
+                x = Find(x);
+                y = Find(y);
+                if (x != y) parent[y] = x;
+            }
+
+            for (var i = 0; i < list.Count; i++)
+                for (var j = i + 1; j < list.Count; j++)
+                    if (SameTopic(list[i].Topic, list[j].Topic)) Union(i, j);
+
+            foreach (var cluster in Enumerable.Range(0, list.Count).GroupBy(Find))
+            {
+                var members = cluster.Select(i => list[i]).ToList();
+                if (members.Count < 2) continue;
+
+                merged += MergeInto(all, members);
+            }
+        }
+
+        if (merged > 0) SaveWeights(all.Values.ToList());
+        return merged;
+    }
+
+    /// <summary>按主题名分组归并（模型给出同义分组之后调用）。</summary>
+    public int MergeGroups(IEnumerable<IEnumerable<string>> groups)
+    {
+        var all = LoadWeights();
+        if (all.Count < 2) return 0;
+
+        var merged = 0;
+
+        foreach (var g in groups)
+        {
+            var topics = g.ToList();
+            if (topics.Count < 2) continue;
+
+            var members = all.Values.Where(w => topics.Contains(w.Topic, StringComparer.Ordinal)).ToList();
+            if (members.Count < 2) continue;
+
+            merged += MergeInto(all, members);
+        }
+
+        if (merged > 0) SaveWeights(all.Values.ToList());
+        return merged;
+    }
+
+    /// <summary>
+    /// 把若干桶并进最重的那条，返回并掉了几个。这几个必须已经判定是同一件事。
+    ///
+    /// 只改传进来的这份字典，不落盘——落盘由调用方在**全部合并做完之后统一做一次**。
+    /// 这里以前自己 Load 一遍再 Save，结果是：留下的是外面那份快照（还带着被并掉的桶），
+    /// 而被并掉的桶在另一份字典里被删掉后又没写进去。于是每调一次，主桶权重再加一遍，
+    /// 桶却一个都没少。
+    /// </summary>
+    private static int MergeInto(Dictionary<string, IdeaWeight> all, IReadOnlyList<IdeaWeight> members)
+    {
+        if (members.Count < 2) return 0;
+
+        // 留最重的一条当主桶，其余并进去。主桶的 id 不变，页面上不会突然换条目。
+        var keep = members
+            .OrderByDescending(w => w.Weight)
+            .ThenByDescending(w => w.UpdatedAt)
+            .First();
+
+        var rest = members.Where(w => !ReferenceEquals(w, keep)).ToList();
+
+        // 权重取和但压在天花板下：几个桶是各自被强化的，合起来才反映真实在意程度；
+        // 但不能直接冲到「够重」线上，否则刚归并完就变成一个谁也做不动的死结。
+        keep.Weight = Math.Min(0.9, members.Sum(w => w.Weight));
+        keep.MatureRounds = members.Max(w => w.MatureRounds);
+        keep.Reinforced += rest.Sum(w => w.Reinforced);
+        keep.UpdatedAt = members.Max(w => w.UpdatedAt);
+        keep.Done = members.All(w => w.Done);
+
+        MergeItems(keep, rest.SelectMany(w => w.Items.Select(i => i.Text)));
+        keep.Title = IdeaWeight.TitleWithTopic(keep.Kind, keep.Who, keep.Target, keep.Topic);
+
+        foreach (var r in rest) all.Remove(IdeaWeight.StoreKey(r));
+
+        return rest.Count;
     }
 
     // -- 加权意向 -----------------------------------------------------

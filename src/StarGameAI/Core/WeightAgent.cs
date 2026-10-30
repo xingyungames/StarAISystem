@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Llm;
 
@@ -242,4 +242,120 @@ public sealed class WeightAgent
             .Take(8)
             .ToList();
     }
+
+    /// <summary>
+    /// 用模型认出「同一件事的不同说法」并归并，返回并掉了几个。
+    ///
+    /// 字符统计只能捞到明显同形的（「X的梦想答案」和「梦想答案空着」），
+    /// 换个说法就捞不到（「梦想那题没答」跟它们一个二元组都不重合）。
+    /// 这是语义判断，交给模型一次最省——一个落点最多也就几行。
+    /// </summary>
+    public async Task<int> MergeSameTopicsAsync(CancellationToken ct)
+    {
+        var all = _chains.LoadWeights();
+
+        var groups = all.Values
+            .GroupBy(w => IdeaWeight.KeyOf(w.Kind, w.Target))
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        if (groups.Count == 0) return 0;
+
+        // 先把各落点的同义组都问出来，最后一次性归并。
+        // 边问边并不行：每归并一次桶的 id 和顺序都会变，后面的下标全对不上。
+        var same = new List<List<string>>();
+
+        foreach (var g in groups)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var list = g.ToList();
+            if (list.Count < 2) continue;
+
+            var sb = new StringBuilder();
+            for (var i = 0; i < list.Count; i++) sb.AppendLine((i + 1) + ". " + list[i].Topic);
+
+            string raw;
+            try
+            {
+                var res = await _llm.ChatAsync("weight", new[]
+                {
+                    ChatMsg.System(TopicMergePrompt),
+                    ChatMsg.User(sb.ToString()),
+                }, ct: ct);
+
+                raw = res.Content ?? "";
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning("按措辞归并失败，跳过这个落点：{Error}", ex.Message);
+                continue;
+            }
+
+            foreach (var cluster in ParseGroups(raw, list.Count))
+                same.Add(cluster.Select(i => list[i].Topic).ToList());
+        }
+
+        if (same.Count == 0) return 0;
+        return _chains.MergeGroups(same);
+    }
+
+    /// <summary>解析 [[1,3,4]] 这种下标分组，越界的丢掉。</summary>
+    private static List<List<int>> ParseGroups(string raw, int count)
+    {
+        var groups = new List<List<int>>();
+
+        var body = (raw ?? "").Trim();
+        if (body.StartsWith("```", StringComparison.Ordinal))
+        {
+            var nl = body.IndexOf('\n');
+            if (nl > 0) body = body[(nl + 1)..];
+            var end = body.LastIndexOf("```", StringComparison.Ordinal);
+            if (end > 0) body = body[..end];
+        }
+
+        var a = body.IndexOf('[');
+        var b = body.LastIndexOf(']');
+        if (a < 0 || b <= a) return groups;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body[a..(b + 1)]);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return groups;
+
+            foreach (var one in doc.RootElement.EnumerateArray())
+            {
+                if (one.ValueKind != JsonValueKind.Array) continue;
+
+                var list = new List<int>();
+                foreach (var n in one.EnumerateArray())
+                {
+                    if (n.ValueKind != JsonValueKind.Number || !n.TryGetInt32(out var idx)) continue;
+                    idx--;                                   // 模型按 1 开始数
+                    if (idx >= 0 && idx < count && !list.Contains(idx)) list.Add(idx);
+                }
+
+                if (list.Count >= 2) groups.Add(list);
+            }
+        }
+        catch { /* 解析不出来就当没归并 */ }
+
+        return groups;
+    }
+
+    private const string TopicMergePrompt = """
+下面是一个落点下攒着的几条「在意的事」，每条前面有编号。
+
+请告诉我：**哪些编号说的是同一件事。**
+
+规则：
+- 同一件事被写成几个不同的短语（「梦想的答案」「梦想那题没答」「欠她的回答」），
+  它们就是同一件事，归到一组。
+- 只是同一个话题下的不同动作，不算同一件事，不要归到一起。
+- 拿不准就不要归——宁可漏归，也不要把两件事并成一件。
+
+只输出 JSON 数组，每组一个数组，组内放编号。没有要并的就输出 []：
+
+[[1,3,4]]
+""";
 }
