@@ -46,7 +46,7 @@
 
 ## 架构总览
 
-``` Mermaid
+```mermaid
 flowchart TD
     NC["NapCat OneBot 11 HTTP POST HMAC-SHA1 签名"]
 
@@ -288,7 +288,7 @@ Tip:
 
 睡眠时，AI的睡眠神经元将对今日缓存做以下处理
 
-``` Mermaid
+```mermaid
 %%{init: {'flowchart': {'curve': 'step'}}}%%
 flowchart LR
     A[分片] --> B[蒸馏<br/>抽候选] --> C[归并<br/>精确+近似]
@@ -328,7 +328,7 @@ flowchart LR
 
 一套"没人说话时自己在想什么"的机制。四个子 AI 串起来：
 
-``` Mermaid
+```mermaid
 %%{init: {'flowchart': {'curve': 'step'}}}%%
 flowchart LR
     subgraph S1[" "]
@@ -406,7 +406,7 @@ Block.State   —— one_to_one / open_topic，直接导出回复形态
 
 路由：
 
-``` Mermaid
+```mermaid
 %%{init: {'flowchart': {'curve': 'step'}}}%%
 flowchart LR
     A["规则信号累加"] --> B{"最高分 ≥ 门槛？"}
