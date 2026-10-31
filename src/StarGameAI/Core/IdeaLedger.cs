@@ -1,36 +1,52 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 
 namespace StarGameAI.Core;
 
-/// <summary>一条「想做点什么」的提案。</summary>
+/// <summary>
+/// 一条「想做点什么」的提案
+/// </summary>
 public class IdeaProposal
 {
     public string Id { get; set; } = "";
-    /// <summary>speech（说话）/ poke / private / file</summary>
+    /// <summary>
+    /// speech（说话）/ poke / private / file
+    /// </summary>
     public string Intent { get; set; } = "speech";
-    /// <summary>目标：private:&lt;qq&gt;、group:&lt;群号&gt; 或裸 QQ 号</summary>
+    /// <summary>
+    /// 目标：private:&lt;qq&gt;、group:&lt;群号&gt; 或裸 QQ 号
+    /// </summary>
     public string Target { get; set; } = "";
     public string Text { get; set; } = "";
     public string Reason { get; set; } = "";
 }
 
-/// <summary>一次准入判定的结果，会被记进账本。</summary>
+/// <summary>
+/// 一次准入判定的结果，会被记进账本
+/// </summary>
 public sealed class IdeaRecord : IdeaProposal
 {
     public long Ts { get; set; }
-    /// <summary>test（后台手动投递）/ scheduler（P3 之后启用）</summary>
+    /// <summary>
+    /// test（后台手动投递）/ scheduler（P3 之后启用）
+    /// </summary>
     public string Source { get; set; } = "test";
     public string TargetName { get; set; } = "";
-    /// <summary>判定时的在线状态快照，事后排查用</summary>
+    /// <summary>
+    /// 判定时的在线状态快照，事后排查用
+    /// </summary>
     public string Presence { get; set; } = "";
     public bool Allowed { get; set; }
-    /// <summary>被哪道闸拦下：disabled / intent / quiet / presence / cooldown / hourly / daily</summary>
+    /// <summary>
+    /// 被哪道闸拦下：disabled / intent / quiet / presence / cooldown / hourly / daily
+    /// </summary>
     public string BlockedBy { get; set; } = "";
     public string BlockedDetail { get; set; } = "";
 }
 
-/// <summary>想法准入门槛（P2）。</summary>
+/// <summary>
+/// 想法准入门槛（P2）
+/// </summary>
 public sealed class IdeaGate
 {
     private static readonly UTF8Encoding Utf8 = new(false);
@@ -130,7 +146,9 @@ public sealed class IdeaGate
         return record;
     }
 
-    /// <summary>从目标字符串里取出 QQ 号；群目标返回空（群没有人的在线状态）。</summary>
+    /// <summary>
+    /// 从目标字符串里取出 QQ 号；群目标返回空（群没有人的在线状态）
+    /// </summary>
     public static string UserOf(string? target)
     {
         var t = (target ?? "").Trim();

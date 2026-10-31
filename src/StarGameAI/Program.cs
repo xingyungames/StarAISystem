@@ -154,7 +154,9 @@ app.MapGet("/", (IWebHostEnvironment hostEnv) =>
 });
 
 
-/// <summary>OneBot 11 上报入口。先 ACK 再处理：NapCat 约 3 秒收不到 200 就会重投，</summary>
+/// <summary>
+/// OneBot 11 上报入口。先 ACK 再处理：NapCat 约 3 秒收不到 200 就会重投
+/// </summary>
 app.MapPost("/", async (HttpContext ctx) =>
 {
     var receiver = ctx.RequestServices.GetRequiredService<Receiver>();

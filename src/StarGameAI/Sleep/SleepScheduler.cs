@@ -1,10 +1,12 @@
-﻿using StarGameAI.Core;
+using StarGameAI.Core;
 using StarGameAI.Llm;
 using StarGameAI.Pipeline;
 
 namespace StarGameAI.Sleep;
 
-/// <summary>作息调度器：让 AI「自己找时间睡」。</summary>
+/// <summary>
+/// 作息调度器：让 AI「自己找时间睡」
+/// </summary>
 public sealed class SleepScheduler : BackgroundService
 {
     private const int AttemptBackoffSeconds = 900;

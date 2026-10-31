@@ -2,7 +2,9 @@ using System.Text.Json;
 
 namespace StarGameAI.Gateway;
 
-/// <summary>消息段摘要，只保留类型与人可读的简写，不存二进制。</summary>
+/// <summary>
+/// 消息段摘要，只保留类型与人可读的简写，不存二进制
+/// </summary>
 public sealed class SegBrief
 {
     public string T { get; set; } = "text";
@@ -80,7 +82,9 @@ public static class OneBot
         };
     }
 
-    /// <summary>把消息段数组归一化成纯文本 + 摘要。at 段命中 selfId 时判定为「被叫到」。</summary>
+    /// <summary>
+    /// 把消息段数组归一化成纯文本 + 摘要。at 段命中 selfId 时判定为「被叫到」
+    /// </summary>
     public static (string text, List<SegBrief> briefs, bool addressed, string replyTo) Flatten(
         List<OneBotSegment>? segments, string selfId)
     {

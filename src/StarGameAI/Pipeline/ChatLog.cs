@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
@@ -6,12 +6,18 @@ using StarGameAI.Gateway;
 
 namespace StarGameAI.Pipeline;
 
-/// <summary>一条聊天记录。入站来自 NapCat 上报，出站由发送成功后回写。</summary>
+/// <summary>
+/// 一条聊天记录。入站来自 NapCat 上报，出站由发送成功后回写
+/// </summary>
 public sealed class LogEntry
 {
-    /// <summary>本地接收时间。日志分目录与水位线都用它，避免 NapCat 补投的历史时间戳把数据写进旧目录。</summary>
+    /// <summary>
+    /// 本地接收时间。日志分目录与水位线都用它，避免 NapCat 补投的历史时间戳把数据写进旧目录
+    /// </summary>
     public long Ts { get; set; }
-    /// <summary>事件自带的时间（仅作参考）。</summary>
+    /// <summary>
+    /// 事件自带的时间（仅作参考）
+    /// </summary>
     public long EventTs { get; set; }
     public string MessageId { get; set; } = "";
     public string TraceId { get; set; } = "";
@@ -20,14 +26,18 @@ public sealed class LogEntry
     public string Name { get; set; } = "";
     public string Role { get; set; } = "member";
     public bool IsSelf { get; set; }
-    /// <summary>reply / ambient / recall / manual。入站为空。</summary>
+    /// <summary>
+    /// reply / ambient / recall / manual。入站为空
+    /// </summary>
     public string Trigger { get; set; } = "";
     public string InReplyTo { get; set; } = "";
     public string Text { get; set; } = "";
     public List<SegBrief> Segments { get; set; } = new();
 }
 
-/// <summary>缓存日志层。纯 append、零模型调用、在消息入口同步写入。</summary>
+/// <summary>
+/// 缓存日志层。纯 append、零模型调用、在消息入口同步写入
+/// </summary>
 public sealed class ChatLog
 {
     private static readonly UTF8Encoding Utf8 = new(false);
@@ -58,7 +68,9 @@ public sealed class ChatLog
         }
     }
 
-    /// <summary>读取某天（可限定 scope）的记录，按写入顺序。</summary>
+    /// <summary>
+    /// 读取某天（可限定 scope）的记录，按写入顺序
+    /// </summary>
     public List<LogEntry> Read(DateOnly date, string? scope = null, string? trace = null)
     {
         var dir = Path.Combine(_env.LogDir, date.ToString("yyyy-MM-dd"));
@@ -87,7 +99,9 @@ public sealed class ChatLog
         return result.OrderBy(e => e.Ts).ToList();
     }
 
-    /// <summary>某天全量记录数（用于睡眠阈值判断）。</summary>
+    /// <summary>
+    /// 某天全量记录数（用于睡眠阈值判断）
+    /// </summary>
     public int CountOfDate(DateOnly date)
     {
         var dir = Path.Combine(_env.LogDir, date.ToString("yyyy-MM-dd"));
@@ -124,7 +138,9 @@ public sealed class ChatLog
     }
 }
 
-/// <summary>今日计数（进程内，重启归零；用于后台展示与发言门预算）。</summary>
+/// <summary>
+/// 今日计数（进程内，重启归零；用于后台展示与发言门预算）
+/// </summary>
 public sealed class Metrics
 {
     private readonly ConcurrentDictionary<string, long> _counters = new();

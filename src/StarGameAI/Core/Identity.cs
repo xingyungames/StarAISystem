@@ -1,10 +1,12 @@
-﻿using System.Text;
+using System.Text;
 using StarGameAI.Memory;
 using StarGameAI.Pipeline;
 
 namespace StarGameAI.Core;
 
-/// <summary>身份卡：把「这个 QQ 号到底是谁」翻译成模型能读的几行字。</summary>
+/// <summary>
+/// 身份卡：把「这个 QQ 号到底是谁」翻译成模型能读的几行字
+/// </summary>
 public sealed class Identity
 {
     private readonly Env _env;
@@ -20,10 +22,14 @@ public sealed class Identity
         _chatLog = chatLog;
     }
 
-    /// <summary>这个人是不是"可以私聊的熟人"（转发给 Contacts 的判定）。</summary>
+    /// <summary>
+    /// 这个人是不是"可以私聊的熟人"（转发给 Contacts 的判定）
+    /// </summary>
     public bool IsPrivatePartner(string userId) => _contacts.IsPrivatePartner(userId);
 
-    /// <summary>场景标签翻译成人话。</summary>
+    /// <summary>
+    /// 场景标签翻译成人话
+    /// </summary>
     public static string Label(string scope)
     {
         if (scope.StartsWith("private:", StringComparison.Ordinal)) return "私聊";
@@ -31,7 +37,9 @@ public sealed class Identity
         return scope;
     }
 
-    /// <summary>一个人的身份卡。</summary>
+    /// <summary>
+    /// 一个人的身份卡
+    /// </summary>
     public string CardFor(string userId, string currentScope, bool verbose = false)
     {
         var uid = (userId ?? "").Trim();
@@ -74,7 +82,9 @@ public sealed class Identity
         return sb.ToString();
     }
 
-    /// <summary>一句话的身份标签，用来标在每条历史消息前面。</summary>
+    /// <summary>
+    /// 一句话的身份标签，用来标在每条历史消息前面
+    /// </summary>
     public string SenderTag(string userId, string name, string currentScope)
     {
         var uid = (userId ?? "").Trim();
@@ -92,7 +102,9 @@ public sealed class Identity
             : $"{label}（QQ {uid}）";
     }
 
-    /// <summary>唤醒块：把这个场景里最近说过话的人，逐个对进联系人词典。</summary>
+    /// <summary>
+    /// 唤醒块：把这个场景里最近说过话的人，逐个对进联系人词典
+    /// </summary>
     public string WakeBlock(string scope, string currentUserId, int window = 40)
     {
         var order = new List<string>();
@@ -133,7 +145,9 @@ public sealed class Identity
         return sb.ToString();
     }
 
-    /// <summary>群里的「在场的人」花名册（旧接口，保留给意图层用）。</summary>
+    /// <summary>
+    /// 群里的「在场的人」花名册（旧接口，保留给意图层用）
+    /// </summary>
     public string RosterBlock(string scope, string currentUserId, int max = 5)
     {
         if (!scope.StartsWith("group:", StringComparison.Ordinal)) return "";

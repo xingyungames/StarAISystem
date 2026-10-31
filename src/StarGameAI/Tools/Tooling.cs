@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -13,7 +13,9 @@ public sealed class ToolContract
     public int Version { get; set; } = 1;
     public string Description { get; set; } = "";
     public Dictionary<string, ToolParam> Params { get; set; } = new();
-    /// <summary>返回值描述：允许写成字符串，也允许写成 {"type":..,"desc":..}。</summary>
+    /// <summary>
+    /// 返回值描述：允许写成字符串，也允许写成 {"type":..,"desc":..}
+    /// </summary>
     public JsonElement? Returns { get; set; }
     public string SideEffects { get; set; } = "none";
     public int TimeoutS { get; set; } = 5;
@@ -30,7 +32,9 @@ public sealed class ToolParam
 public sealed class ToolMeta
 {
     public string Name { get; set; } = "";
-    /// <summary>draft / pending / active / disabled</summary>
+    /// <summary>
+    /// draft / pending / active / disabled
+    /// </summary>
     public string Status { get; set; } = "draft";
     public int Version { get; set; } = 1;
     public string Description { get; set; } = "";
@@ -59,7 +63,9 @@ public sealed class ToolRunResult
     public int ExitCode { get; set; }
 }
 
-/// <summary>Python 工具子系统：注册 → 自动准入门禁 → 子进程执行。</summary>
+/// <summary>
+/// Python 工具子系统：注册 → 自动准入门禁 → 子进程执行
+/// </summary>
 public sealed class Tooling
 {
     private static readonly Regex ContractRe =
@@ -79,7 +85,6 @@ public sealed class Tooling
         EnsureInspector();
     }
 
-    // -- 枚举 -------------------------------------------------------------
     public List<ToolRecord> List()
     {
         if (!Directory.Exists(_env.ToolsDir)) return new List<ToolRecord>();
@@ -146,14 +151,15 @@ public sealed class Tooling
         }
     }
 
-    // -- 准入 -------------------------------------------------------------
     public sealed class AdmitResult
     {
         public bool Ok { get; set; }
         public string Reason { get; set; } = "";
     }
 
-    /// <summary>跑完三道门禁并把结果写回 meta.json。</summary>
+    /// <summary>
+    /// 跑完三道门禁并把结果写回 meta.json
+    /// </summary>
     public async Task<AdmitResult> AdmitAsync(string name, CancellationToken ct)
     {
         var record = Load(name);
@@ -227,7 +233,6 @@ public sealed class Tooling
         Env.WriteAtomic(path, JsonSerializer.Serialize(meta, AppJson.Options));
     }
 
-    // -- 静态检查 ---------------------------------------------------------
     public async Task<AdmitResult> InspectAsync(string pyPath, CancellationToken ct)
     {
         if (!File.Exists(_inspectorPath))
@@ -266,7 +271,6 @@ public sealed class Tooling
         }
     }
 
-    // -- 执行 -------------------------------------------------------------
     public async Task<ToolRunResult> RunAsync(string name, string argsJson, CancellationToken ct)
     {
         var record = Load(name);
@@ -347,7 +351,9 @@ public sealed class Tooling
         }
     }
 
-    /// <summary>转成模型可用的工具定义。只有 active 才出现（I7）。</summary>
+    /// <summary>
+    /// 转成模型可用的工具定义。只有 active 才出现（I7）
+    /// </summary>
     public List<LlmToolDef> ActiveDefs()
     {
         var defs = new List<LlmToolDef>();
@@ -386,7 +392,6 @@ public sealed class Tooling
         return defs;
     }
 
-    // -- 进程执行 ---------------------------------------------------------
     private async Task<(int code, string stdout, string stderr)> ExecAsync(
         string fileName,
         IEnumerable<string> args,
@@ -482,7 +487,6 @@ public sealed class Tooling
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
 
-    // -- 检查器脚本 -------------------------------------------------------
     private void EnsureInspector()
     {
         if (File.Exists(_inspectorPath)) return;

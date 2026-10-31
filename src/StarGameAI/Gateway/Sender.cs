@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -13,7 +13,9 @@ public sealed class SendResult
     public string Error { get; set; } = "";
 }
 
-/// <summary>出站：调 NapCat 的 /send_group_msg 与 /send_private_msg。</summary>
+/// <summary>
+/// 出站：调 NapCat 的 /send_group_msg 与 /send_private_msg
+/// </summary>
 public sealed class Sender
 {
     private static readonly HttpClient Http = new(new SocketsHttpHandler
@@ -35,7 +37,9 @@ public sealed class Sender
         _log = log;
     }
 
-    /// <summary>按段落切分，保证单段不超长。</summary>
+    /// <summary>
+    /// 按段落切分，保证单段不超长
+    /// </summary>
     public List<string> Split(string text)
     {
         var max = Math.Max(80, _env.Server.Ratelimit.ReplyMaxChars);
@@ -63,7 +67,9 @@ public sealed class Sender
         return parts;
     }
 
-    /// <summary>把一段回复切成多条消息。</summary>
+    /// <summary>
+    /// 把一段回复切成多条消息
+    /// </summary>
     public List<string> Segment(string text)
     {
         var body = (text ?? "").Replace("\r\n", "\n").Trim();
@@ -94,14 +100,18 @@ public sealed class Sender
         return parts;
     }
 
-    /// <summary>发送一段或多段文本（每段是一条独立的 QQ 消息）。</summary>
+    /// <summary>
+    /// 发送一段或多段文本（每段是一条独立的 QQ 消息）
+    /// </summary>
     public async Task<SendResult> SendTextAsync(string scope, string text, string? replyTo, CancellationToken ct)
     {
         var results = await SendSegmentsAsync(scope, Split(text), replyTo, ct);
         return results.Count > 0 ? results[^1] : new SendResult { Ok = false, Error = "内容为空" };
     }
 
-    /// <summary>逐条发送多段，返回每一条的结果。</summary>
+    /// <summary>
+    /// 逐条发送多段，返回每一条的结果
+    /// </summary>
     public async Task<List<SendResult>> SendSegmentsAsync(
         string scope, List<string> parts, string? replyTo, CancellationToken ct)
     {

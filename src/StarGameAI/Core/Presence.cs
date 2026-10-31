@@ -1,36 +1,50 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace StarGameAI.Core;
 
-/// <summary>显式记录的一条在线状态（manual / self_report），以及最近活动的痕迹。</summary>
+/// <summary>
+/// 显式记录的一条在线状态（manual / self_report），以及最近活动的痕迹
+/// </summary>
 public sealed class PresenceEntry
 {
     public string UserId { get; set; } = "";
-    /// <summary>online / offline / unknown</summary>
+    /// <summary>
+    /// online / offline / unknown
+    /// </summary>
     public string State { get; set; } = "unknown";
-    /// <summary>manual / self_report —— 只有这两种会被持久化，其余靠现场计算</summary>
+    /// <summary>
+    /// manual / self_report —— 只有这两种会被持久化，其余靠现场计算
+    /// </summary>
     public string Source { get; set; } = "manual";
     public long Since { get; set; }
     public string Note { get; set; } = "";
-    /// <summary>0 表示不过期。</summary>
+    /// <summary>
+    /// 0 表示不过期
+    /// </summary>
     public long ExpiresAt { get; set; }
     public long LastSeen { get; set; }
 }
 
-/// <summary>判定结果。</summary>
+/// <summary>
+/// 判定结果
+/// </summary>
 public sealed class PresenceView
 {
     public string UserId { get; set; } = "";
     public string State { get; set; } = "unknown";
     public string Source { get; set; } = "";
     public string Note { get; set; } = "";
-    /// <summary>是否允许被主动打扰。offline=false；online=true；unknown 看允许时段。</summary>
+    /// <summary>
+    /// 是否允许被主动打扰。offline=false；online=true；unknown 看允许时段
+    /// </summary>
     public bool CanDisturb { get; set; }
     public long ExpiresAt { get; set; }
     public long LastSeen { get; set; }
 }
 
-/// <summary>在线状态层（思想层的地基）。</summary>
+/// <summary>
+/// 在线状态层（思想层的地基）
+/// </summary>
 public sealed class Presence
 {
     private readonly Env _env;
@@ -88,7 +102,9 @@ public sealed class Presence
     }
 
 
-    /// <summary>收到消息时调用：更新最近活动时间。</summary>
+    /// <summary>
+    /// 收到消息时调用：更新最近活动时间
+    /// </summary>
     public void TouchActivity(string userId)
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
@@ -100,7 +116,9 @@ public sealed class Presence
         }
     }
 
-    /// <summary>后台手动设定（优先级最高）。ttlHours &lt;= 0 表示不过期。</summary>
+    /// <summary>
+    /// 后台手动设定（优先级最高）。ttlHours &lt;= 0 表示不过期
+    /// </summary>
     public void SetManual(string userId, string state, string note, int ttlHours)
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
@@ -116,7 +134,9 @@ public sealed class Presence
         }
     }
 
-    /// <summary>清掉手动设定，回到自动判定。</summary>
+    /// <summary>
+    /// 清掉手动设定，回到自动判定
+    /// </summary>
     public bool ClearManual(string userId)
     {
         lock (_lock)
@@ -134,7 +154,9 @@ public sealed class Presence
         }
     }
 
-    /// <summary>用户自报在线/离线（既定事实层的第二优先级）。</summary>
+    /// <summary>
+    /// 用户自报在线/离线（既定事实层的第二优先级）
+    /// </summary>
     public void ReportSelf(string userId, bool online, string note, int ttlHours)
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
@@ -222,7 +244,9 @@ public sealed class Presence
         : seconds < 86400 ? seconds / 3600 + " 小时前"
         : seconds / 86400 + " 天前";
 
-    /// <summary>后台列表：所有有记录的人 + 自动判定结果。</summary>
+    /// <summary>
+    /// 后台列表：所有有记录的人 + 自动判定结果
+    /// </summary>
     public List<PresenceView> All(IEnumerable<string>? extraUserIds = null)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -250,7 +274,9 @@ public sealed class Presence
         "我回来了", "回来了", "下课", "醒了", "上线", "到家", "空闲了", "有空了", "忙完了",
     };
 
-    /// <summary>从用户的话里识别「我现在在线/离线」。</summary>
+    /// <summary>
+    /// 从用户的话里识别「我现在在线/离线」
+    /// </summary>
     public bool TryDetectSelfReport(string text, out bool online, out string note, out int ttlHours)
     {
         online = false;

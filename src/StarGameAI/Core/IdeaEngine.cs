@@ -14,40 +14,64 @@ public sealed class IdeaCandidate
     public string Target { get; set; } = "";
     public string Text { get; set; } = "";
     public string Reason { get; set; } = "";
-    /// <summary>self = 自我意象（自行去做）；context = 对方给的需求（等时机）。</summary>
+    /// <summary>
+    /// self = 自我意象；context = 对方给的需求
+    /// </summary>
     public string Origin { get; set; } = "context";
 }
 
-/// <summary>一轮发散的「分层输入」，用于后台看清楚它到底看到了什么。</summary>
+/// <summary>
+/// 一轮发散的「分层输入」，用于后台看清楚它到底看到了什么
+/// </summary>
 public sealed class IdeaInputs
 {
-    /// <summary>人设（自我）：我是谁 / 说话风格 / 兴趣</summary>
+    /// <summary>
+    /// 人设
+    /// </summary>
     public List<string> Self { get; set; } = new();
-    /// <summary>最近信息：该会话最近的几条对话</summary>
+    /// <summary>
+    /// 该会话最近的几条对话
+    /// </summary>
     public List<string> Recent { get; set; } = new();
-    /// <summary>记忆碎片：浅层记忆里关于这个对象的条目</summary>
+    /// <summary>
+    /// 浅层记忆里关于这个对象的条目
+    /// </summary>
     public List<string> Memories { get; set; } = new();
-    /// <summary>画像与群体模式：深层画像摘要、群里的活跃梗、在线状态</summary>
+    /// <summary>
+    /// 画像与群体模式：深层画像摘要、群里的活跃梗、在线状态
+    /// </summary>
     public List<string> Profile { get; set; } = new();
-    /// <summary>最近更在意的事（思想层自己提的权重）</summary>
+    /// <summary>
+    /// 最近更在意的事
+    /// </summary>
     public List<string> Weights { get; set; } = new();
-    /// <summary>上一次的思绪（一句）</summary>
+    /// <summary>
+    /// 上一次的思绪
+    /// </summary>
     public string PrevThought { get; set; } = "";
-    /// <summary>上一次想到的（节选）</summary>
+    /// <summary>
+    /// 上一次想到的
+    /// </summary>
     public List<string> PrevThoughts { get; set; } = new();
 }
 
-/// <summary>收敛给出的一个决策项。</summary>
+/// <summary>
+/// 收敛给出的一个决策项
+/// </summary>
 public sealed class IdeaDecision
 {
-    /// <summary>speak / boost / nothing</summary>
+    /// <summary>
+    /// speak / boost / nothing
+    /// </summary>
     public string Kind { get; set; } = "";
     public string Target { get; set; } = "";
     public string Text { get; set; } = "";
     public string Reason { get; set; } = "";
 }
 
-/// <summary>一轮「想事情」的完整记录。</summary>
+/// <summary>
+/// 一轮「想事情」的完整记录
+/// </summary>
 public sealed class IdeaRound
 {
     public string Id { get; set; } = "";
@@ -55,67 +79,111 @@ public sealed class IdeaRound
     public int Ms { get; set; }
     public string Target { get; set; } = "";
     public string TargetName { get; set; } = "";
-    /// <summary>发散时喂给模型的材料原文（母题）。截断保存，用于回看它到底在想什么。</summary>
+    /// <summary>
+    /// 发散时喂给模型的材料原文（母题）
+    /// </summary>
     public string Subject { get; set; } = "";
-    /// <summary>思想链的版本号（第几版想法）。</summary>
+    /// <summary>
+    /// 思想链的版本号
+    /// </summary>
     public int Version { get; set; }
-    /// <summary>分层输入快照（发散段看的东西）。</summary>
+    /// <summary>
+    /// 分层输入快照
+    /// </summary>
     public IdeaInputs Inputs { get; set; } = new();
-    /// <summary>意图子 AI 的判定：这一轮到底有没有开口动机。</summary>
+    /// <summary>
+    /// 意图子 AI 的判定：这一轮到底有没有开口动机
+    /// </summary>
     public SpeakIntent Intent { get; set; } = new();
-    /// <summary>发散出来的自由联想（允许无厘头）。两路节点的合并结果。</summary>
+    /// <summary>
+    /// 发散出来的自由联想（允许无厘头）两路节点的合并结果
+    /// </summary>
     public List<string> Thoughts { get; set; } = new();
-    /// <summary>节点一「用户需求」：从上下文发呆——对方想让我做什么、有什么没接住。</summary>
+    /// <summary>
+    /// 用户需求：从上下文发呆——对方想让我做什么、有什么没接住
+    /// </summary>
     public List<string> DivUser { get; set; } = new();
-    /// <summary>节点二「自我意图」：从记忆碎片发呆——我自己在意什么、想做什么。</summary>
+    /// <summary>
+    /// 自我意图：从记忆碎片发呆——我自己在意什么、想做什么
+    /// </summary>
     public List<string> DivSelf { get; set; } = new();
-    /// <summary>各阶段的耗时（毫秒），给瀑布图用。</summary>
+    /// <summary>
+    /// 各阶段的耗时（毫秒），给瀑布图用
+    /// </summary>
     public int MsIntent { get; set; }
     public int MsDivUser { get; set; }
     public int MsDivSelf { get; set; }
     public int MsConverge { get; set; }
     public int MsWeight { get; set; }
 
-    /// <summary>「怎么发、什么时候发」花了多少毫秒。</summary>
+    /// <summary>
+    /// 「怎么发、什么时候发」花了多少毫秒
+    /// </summary>
     public int MsRoute { get; set; }
 
-    /// <summary>落点与时机的判定结果。没开这一层就是 null。</summary>
+    /// <summary>
+    /// 落点与时机的判定结果
+    /// </summary>
     public RouteVerdict? Route { get; set; }
 
-    /// <summary>真正发到哪儿。跟 Target 不同就说明落点被改过道。</summary>
+    /// <summary>
+    /// 真正发到哪儿
+    /// </summary>
     public string SentTo { get; set; } = "";
-    /// <summary>这一轮整理出来的加权意向（合并结果）。</summary>
+    /// <summary>
+    /// 这一轮整理出来的加权意向（合并结果）
+    /// </summary>
     public WeightAgent.MergeOutcome? Weights { get; set; }
-    /// <summary>收敛出的「思绪」：把散乱联想压成一句连贯的内在念头。</summary>
+    /// <summary>
+    /// 收敛出的「思绪」：把散乱联想压成一句连贯的内在念头
+    /// </summary>
     public string Thought { get; set; } = "";
-    /// <summary>这一轮落到哪个主题上（短标签）。近似归并就是按它比的，不是按句子比。</summary>
+    /// <summary>
+    /// 这一轮落到哪个主题上（短标签）。近似归并就是按它比的，不是按句子比
+    /// </summary>
     public string Topic { get; set; } = "";
-    /// <summary>这个主题已经连续想了多少轮（含本轮）。1 = 新话题，≥3 = 卡住了。</summary>
+    /// <summary>
+    /// 这个主题已经连续想了多少轮（含本轮）1 = 新话题，≥3 = 卡住了
+    /// </summary>
     public int TopicRepeat { get; set; }
-    /// <summary>决策：所以我应该干什么（可能有多条，也可能只有 nothing）。</summary>
+    /// <summary>
+    /// 决策：所以我应该干什么（可能有多条，也可能只有 nothing）
+    /// </summary>
     public List<IdeaDecision> Decisions { get; set; } = new();
-    /// <summary>本轮提升权重的事项（收敛的第二档结果）。</summary>
+    /// <summary>
+    /// 本轮提升权重的事项（收敛的第二档结果）
+    /// </summary>
     public string Boost { get; set; } = "";
     public double BoostAmount { get; set; }
-    /// <summary>落定：sent / no_idea / weight_only / blocked / error / skipped</summary>
+    /// <summary>
+    /// 落定：sent / no_idea / weight_only / blocked / error / skipped
+    /// </summary>
     public string Outcome { get; set; } = "";
     public List<IdeaCandidate> Candidates { get; set; } = new();
-    /// <summary>收敛挑中的下标，null = 决定什么都不做</summary>
+    /// <summary>
+    /// 收敛挑中的下标，null = 决定什么都不做
+    /// </summary>
     public int? Picked { get; set; }
     public string Why { get; set; } = "";
     public string BlockedBy { get; set; } = "";
     public string Detail { get; set; } = "";
-    /// <summary>真正说出去的话</summary>
+    /// <summary>
+    /// 真正说出去的话
+    /// </summary>
     public string Spoke { get; set; } = "";
     public int Tokens { get; set; }
 }
 
-/// <summary>给后台看的运行状态。</summary>
+/// <summary>
+/// 给后台看的运行状态
+/// </summary>
 public sealed class IdeaStatus
 {
     public bool Enabled { get; set; }
     public bool Running { get; set; }
-    /// <summary>idle / 准备 / 发散中 / 收敛中 / 发送中</summary>
+    /// <summary>
+    /// idle / 准备 / 发散中 / 收敛中 / 发送中
+    /// </summary>
     public string Phase { get; set; } = "idle";
     public string PhaseDetail { get; set; } = "";
     public long PhaseStartedAt { get; set; }
@@ -126,7 +194,9 @@ public sealed class IdeaStatus
     public IdeaRound? LastRound { get; set; }
 }
 
-/// <summary>思想层 P3/P4：发散 → 收敛 → 准入 → 执行。</summary>
+/// <summary>
+/// 思想层 P3/P4：发散 → 收敛 → 准入 → 执行
+/// </summary>
 public sealed class IdeaEngine : BackgroundService
 {
     private const int TickSeconds = 15;
@@ -208,10 +278,13 @@ public sealed class IdeaEngine : BackgroundService
         };
     }
 
-    /// <summary>配额计数用的轮次时间戳：内存里这一轮的 + 文件里历史的。</summary>
+    /// <summary>
+    /// 配额计数用的轮次时间戳
+    /// </summary>
     private List<long> CountedRounds()
     {
         var stamps = new List<long>();
+        //去重
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var r in _rounds.ToArray())
@@ -222,6 +295,7 @@ public sealed class IdeaEngine : BackgroundService
 
         try
         {
+            //读数据
             var path = Path.Combine(_env.IdeaDir, "rounds.jsonl");
             if (File.Exists(path))
             {
@@ -244,7 +318,7 @@ public sealed class IdeaEngine : BackgroundService
                 }
             }
         }
-        catch { /* 读不到就只用内存的 */ }
+        catch { /* 读不到就用内存的 */ }
 
         return stamps;
     }
@@ -254,6 +328,7 @@ public sealed class IdeaEngine : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        //延迟等加载
         try { await Task.Delay(TimeSpan.FromSeconds(15), ct); }
         catch (OperationCanceledException) { return; }
 
@@ -261,10 +336,12 @@ public sealed class IdeaEngine : BackgroundService
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(TickSeconds));
 
+        //主循环
         while (!ct.IsCancellationRequested)
         {
             try
             {
+                //到时间点执行
                 if (Now() >= Interlocked.Read(ref _nextTickAt))
                 {
                     var cfg = _env.Idea;
@@ -291,7 +368,9 @@ public sealed class IdeaEngine : BackgroundService
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
     //坑：只查进程内 Activity 的话，重启后思想层会永远跳过
-    /// <summary>「最近有没有对话」的判断。</summary>
+    /// <summary>
+    /// 「最近有没有对话」的判断
+    /// </summary>
     private int IdleSeconds()
     {
         var idle = _activity.IdleSeconds();
@@ -311,7 +390,9 @@ public sealed class IdeaEngine : BackgroundService
         return int.MaxValue;
     }
 
-    /// <summary>手动触发一轮（忽略空闲与轮次预算，用于调试和"现在就想一次"）。</summary>
+    /// <summary>
+    /// [Debug]手动触发一轮
+    /// </summary>
     public async Task<(bool ok, string message)> RunOnceAsync(string? target, CancellationToken ct)
     {
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
@@ -345,7 +426,11 @@ public sealed class IdeaEngine : BackgroundService
         Interlocked.Exchange(ref _phaseStartedAt, Now());
     }
 
-
+    /// <summary>
+    /// 开始思想
+    /// </summary>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     private async Task RunRoundAsync(CancellationToken ct)
     {
         var cfg = _env.Idea;
@@ -373,6 +458,15 @@ public sealed class IdeaEngine : BackgroundService
             return;
         }
 
+        // 静默时段整轮跳过
+        // 实盘 161 轮里 92 轮落在 01:00-08:00，烧掉 29 万 token，
+        // 而静默时段一道闸就让它们全都发不出去，只剩纯消耗
+        if (think.SkipQuietHours && cfg.QuietHours.Contains(DateTime.Now))
+        {
+            _lastSkip = $"静默时段 {cfg.QuietHours.Start}-{cfg.QuietHours.End}，不空转";
+            return;
+        }
+
         _lastSkip = "";
 
         var targets = PickTargets(think.MaxTargetsPerRound);
@@ -382,10 +476,8 @@ public sealed class IdeaEngine : BackgroundService
         {
             ct.ThrowIfCancellationRequested();
 
-            // 没有新输入就不想。这是「一直卡在一个思绪」最直接的病根：
-            // 群安静、消息还是那几条，每 5 分钟重新发散一遍，模型只能把
-            // 同一句思绪换个说法交上来，看起来像在思考，其实在原地踏步。
-            // 手动触发（RunOnceAsync）不走这道闸，想现在就想是允许的。
+            // 没有新输入就不想
+            // 一直卡在一个思绪的可能修复：群安静、消息还是那几条，每 5 分钟重新发散一遍，同一句思绪换个说法交上来
             var inputTs = LastOtherMessageTs(target);
             var chain = _chains.Load(target);
             if (chain.LastInputTs > 0 && inputTs <= chain.LastInputTs)
@@ -412,17 +504,14 @@ public sealed class IdeaEngine : BackgroundService
 
         foreach (var c in _contacts.All())
         {
-            // 私聊目标必须是"能私聊的人"：群里见过但没好友关系的号，
-            // 拿去当目标只会想完之后发不出去。
+            // 私聊目标必须是"能私聊的人"
             if (!_contacts.IsPrivatePartner(c.UserId)) continue;
 
             var t = "private:" + c.UserId;
             candidates.Add((t, Math.Max(c.LastSeen, LastMessageTs(t))));
         }
 
-        // 按「最近有没有人在这儿说话」排序，而不是群优先。
-        // 之前是群全部排在前面，白名单里群一多（3 个）就把 max_targets 的名额吃光，
-        // 私聊永远轮不到——人一直在私聊说话，它却一直在想群，思绪自然卡住不动。
+        // 按‘最近有没有人在这儿说话’排序
         return candidates
             .Where(c => c.lastTs > 0)
             .OrderByDescending(c => c.lastTs)
@@ -432,16 +521,20 @@ public sealed class IdeaEngine : BackgroundService
             .ToList();
     }
 
-    /// <summary>现在能去说话的地方：白名单群 + 能私聊的人。落点判定只在这张表里挑。</summary>
+    /// <summary>
+    /// 现在能去说话的地方
+    /// </summary>
     private List<RouteSlot> Slots()
     {
         var list = new List<RouteSlot>();
 
+        //遍历白名单群
         foreach (var gid in _env.Server.Whitelist.Groups)
             list.Add(new RouteSlot("group", gid, "群（群号 " + gid + "）"));
-
+        //遍历私聊白名单
         foreach (var c in _contacts.All())
         {
+            //不能私聊的人跳过
             if (!_contacts.IsPrivatePartner(c.UserId)) continue;
 
             var name = c.Name.Trim();
@@ -458,7 +551,9 @@ public sealed class IdeaEngine : BackgroundService
         return now.ToString("yyyy-MM-dd HH:mm") + "，星期" + "日一二三四五六"[(int)now.DayOfWeek];
     }
 
-    /// <summary>对方此刻在不在、在干嘛。判时机要用。</summary>
+    /// <summary>
+    /// 对方此刻在不在、在干嘛
+    /// </summary>
     private string PresenceText(string target)
     {
         var uid = IdeaGate.UserOf(target);
@@ -476,7 +571,9 @@ public sealed class IdeaEngine : BackgroundService
         }
     }
 
-    /// <summary>这个会话今天最后一条消息的时间；没说过话返回 0。</summary>
+    /// <summary>
+    /// 这个会话今天最后一条消息的时间；没说过话返回 0
+    /// </summary>
     private long LastMessageTs(string scope)
     {
         try
@@ -491,7 +588,10 @@ public sealed class IdeaEngine : BackgroundService
         }
     }
 
-    /// <summary>这个会话里**别人**说的最后一条消息的时间；没说过话返回 0。</summary>
+    /// <summary>
+    /// 这个会话里别人说的最后一条消息的时间
+    /// <returns>没说过话返回 0</returns>
+    /// </summary>
     private long LastOtherMessageTs(string scope)
     {
         try
@@ -524,8 +624,8 @@ public sealed class IdeaEngine : BackgroundService
         {
             var chain = _chains.Load(target);
 
-            // 链滚太久会一路飘走（实测第 20 版已经在写诗了）。
-            // 到上限就重置，重新吃一次完整材料再出发。
+            // 链滚太久会飘走
+            // 到上限就重置，重新吃一次完整材料
             if (chain.Version >= Math.Max(2, _env.Idea.Chain.MaxVersions))
             {
                 _log.LogInformation("思想链已到 {V} 版上限，重置：{Target}", chain.Version, target);
@@ -535,23 +635,16 @@ public sealed class IdeaEngine : BackgroundService
 
             round.Version = chain.Version + 1;
 
-            // ---- 先看材料，再问「我到底有没有开口动机」
-            //
-            // 顺序不能反：CaptureInputs 在 BuildContext 里跑，意图子 AI 要用这份分层输入。
-            // 但发散要等意图判定之后——没有动机就不发散，省掉后面两次调用，
-            // 更重要的是拦住"没动机也硬凑一个念头"这种怪意向。
+            // 看材料，问'有没有开口动机'
+            // CaptureInputs 在 BuildContext 里跑，意图子 AI 要用这份分层输入
+            // 发散要等意图判定之后——没有动机就不发散，省掉两次调用
             SetPhase("判断意图中", $"第 {round.Version} 版：{round.TargetName}");
 
-            // 这一步只负责把分层输入采集进 round.Inputs（CaptureInputs 在 BuildContext 里），
-            // 返回值不用——母题由两路节点的输入拼出来。
+            // 把分层输入采集进 round.Inputs
+            // 母题由两路节点的输入拼出来
             BuildContext(target, chain, round.Inputs);
 
-            // 意图子 AI 的结论只决定「要不要开口」，**不该决定「要不要想」**。
-            //
-            // 原来没有动机就直接 return，结果是实盘 175 轮里 166 轮停在 no_intent，
-            // 发散层、加权层一次都没跑过——整层等于没有。而没有开口动机恰恰是常态，
-            // 这时候「自己在意什么」那一路才是最该跑的时候。
-            // 所以没动机时改成：只跑自我意图那一路，收敛只许产出「加权重 / 什么都不做」。
+            // 只决定「要不要开口」，不决定「要不要想」
             var selfOnly = false;
 
             if (_env.Idea.Intent.Enabled)
@@ -561,7 +654,7 @@ public sealed class IdeaEngine : BackgroundService
 
                 var swIntent = System.Diagnostics.Stopwatch.StartNew();
 
-                // 够重但一直没做的意向 → 交给意图子 AI 当动机来源（A②(a)）
+                // 够重但一直没做的意向 → 交给意图子 AI 当动机来源
                 var mature = _chains.MatureWeights(3)
                     .Select(x => (
                         text: (x.Title.Length > 0 ? x.Title : IdeaWeight.TitleOf(x.Kind, x.Who, x.Target))
@@ -580,8 +673,7 @@ public sealed class IdeaEngine : BackgroundService
 
                 if (!round.Intent.HasIntent)
                 {
-                    // 意图判定本身失败（网络/解析），不要接着去发散——
-                    // 那只会再烧两次注定失败的调用。直接收尾。
+                    // 意图判定本身失败（网络/解析）直接收尾。
                     if (round.Intent.Kind == "error")
                     {
                         round.Outcome = "error";
@@ -597,10 +689,7 @@ public sealed class IdeaEngine : BackgroundService
                 }
             }
 
-            // ---- 发散（两路节点并行"发呆"，再合成一份思想）
-            //
-            // 分两路的原因：一路看当前上下文（对方要我做什么），一路看记忆碎片（我自己在意什么）。
-            // 混在一次调用里，模型会挑好写的那一路走，实测就是"群聊技术话题 + 它想她喊困"。
+            // 发散
             SetPhase("发散中", $"第 {round.Version} 版想法：{round.TargetName}");
 
             var subject = BuildUserContext(target, chain, round.Inputs, round.Intent);
@@ -613,7 +702,8 @@ public sealed class IdeaEngine : BackgroundService
             var userPrompt = DivergeUserPrompt.Replace("{N}", half.ToString());
             var selfPrompt = DivergeSelfPrompt.Replace("{N}", half.ToString());
 
-            // 没有开口动机时，上下文那一路没有可回应的事，跑它只会凑出"硬找话说"的念头。
+            // 没有开口动机时，跑它只会凑出"硬找话说"的念头
+            // 如果你喜欢让TA尴尬的唠嗑……？
             if (!selfOnly)
             {
                 var swUser = System.Diagnostics.Stopwatch.StartNew();
@@ -646,8 +736,7 @@ public sealed class IdeaEngine : BackgroundService
             chain.Version = round.Version;
             chain.Thoughts = round.Thoughts.ToList();
             chain.UpdatedAt = Now();
-            // 记下这一轮消费到的输入水位。下一轮如果还是这批消息，就不再想一遍——
-            // 没有新输入时的"再想一次"只会产出一句和上次几乎一样的思绪（实测就这样）。
+            // 记下这一轮输入水位。下一轮如果还是这批消息，就不再想一遍 没输入再想只会产出一句和上次几乎一样的思绪
             chain.LastInputTs = LastOtherMessageTs(target);
             chain.History.Insert(0, new IdeaChainVersion
             {
@@ -669,15 +758,16 @@ public sealed class IdeaEngine : BackgroundService
 
             _metrics.Inc("idea.candidates");
 
-            // ---- 收敛：两路念头压成 [答复] + [意图]
+            // 收敛：两路念头压成 [答复] + [意图]
             SetPhase("收敛中", $"从 {round.Thoughts.Count} 条想法里压出答复和意图");
 
             var swConv = System.Diagnostics.Stopwatch.StartNew();
+            //注入提示词
             var convergeSystem = selfOnly
                 ? ConvergePrompt + "\n\n【这一轮的限制】刚才没人在跟你说话，所以**不要回应任何人**。" +
                   "但**你自己想做的事可以现在就去做**：只要 intent.origin = \"self\"," +
                   "kind 允许写成 \"act\"——自我意象不需要由头，不用等谁来邀请。" +
-                  "反过来，origin = \"context\" 的 act 会被直接丢掉（没那个场合）。"
+                  "反过来，origin = \"context\" 的 act 会被直接丢掉（没那个场合）"
                 : ConvergePrompt;
             var pickRes = await _llm.ChatAsync("converge", new[]
             {
@@ -692,7 +782,7 @@ public sealed class IdeaEngine : BackgroundService
             round.Thought = thought;
             if (why.Length > 0) round.Why = why;
 
-            // 兜底：提示词说了不许说话，但模型未必听。这里硬拦一次。
+            // 兜底：提示词说了不许说话，但模型未必听
             if (selfOnly && action is not null && action.Origin != "self")
             {
                 _log.LogInformation("没开口动机却给了动作，已丢弃：{Target} → {Text}",
@@ -700,14 +790,8 @@ public sealed class IdeaEngine : BackgroundService
                 action = null;
             }
 
-            // ---- 近似归并：判断这一轮是不是又在想上一次那件事
-            //
-            // 比的是 topic 标签而不是整句。整句比相似度是不行的——实测
-            // 「她喊困却没走，我别急着追问…」和「她那句困可能是想有人陪…」
-            // 字符二元组交集是 0，但显然是同一件事，相似度会给出 0，归并完全不生效。
-            // 模型偶尔会漏掉 topic。用思绪首句兜底（只当展示与弱归并用），
-            // 绝不从思绪里"猜"主题——那样给出的标签是「她那句困可能」这种碎片，
-            // 拿它做归并会把不相干的两轮误并到一起。
+            // 判断这一轮是不是又在想上一次那件事
+            // 比的是 topic 标签而不是整句
             var topicKey = topic.Length > 0 ? topic : FirstSentence(thought, 12);
             round.Topic = topicKey;
             round.TopicRepeat = 1 + TrailingRepeat(chain.Topics, topicKey);
@@ -717,10 +801,6 @@ public sealed class IdeaEngine : BackgroundService
                     target, round.TopicRepeat, topicKey);
 
             // 这件事已经提过了，就别再想一遍。
-            //
-            // 实盘教训：同一件事 26 轮里提了 26 次，18 次被闸拦下，但被拦的那一轮
-            // 什么都没记住，于是下一轮接着提。闸只挡「发出去」，挡不住「再想一次」。
-            // 这里在加权和动作之前就掐掉，连 token 都不再花在它身上。
             if (IsSuppressed(chain, topicKey))
             {
                 round.Outcome = "suppressed";
@@ -740,10 +820,8 @@ public sealed class IdeaEngine : BackgroundService
                     chain.Topics = chain.Topics.Skip(chain.Topics.Count - 6).ToList();
             }
 
-            // 加权重是第二档结果：现在不说，但以后更在意。
-            //
-            // 交给 WeightAgent：它用**增量协议**（只回答 add / remove）把新事项并进对应落点，
-            // 而不是每次重写全文——后者会越写越长、撞长度上限、然后被硬截断。
+            // 加权重
+            // 交给 WeightAgent用增量协议把新事项并进对应落点
             if (boost is not null && boost.Items.Count > 0)
             {
                 var swWeight = System.Diagnostics.Stopwatch.StartNew();
@@ -754,12 +832,10 @@ public sealed class IdeaEngine : BackgroundService
 
                 round.Weights = merged;
 
+                // 桶够重了拒绝继续加权
                 if (merged.Rejected)
                 {
-                    // 桶已经够重了 —— 拒绝继续加权。
-                    //
-                    // 实盘教训：91/93 轮都在给已经 1.00 的桶加权，净效果为零，
-                    // 却烧掉近 30 万 token。到顶之后正确的事是去做，不是继续惦记。
+                    // 实盘教训：91/93 轮都在给已经 1.00 的桶加权，净效果为零烧掉近 30 万 token
                     round.Boost = merged.Note;
                     round.BoostAmount = merged.Weight;
                     round.Detail = merged.Note;
@@ -774,7 +850,7 @@ public sealed class IdeaEngine : BackgroundService
                 }
             }
 
-            // 思绪写回链，下一轮接着这句往下想（而不是接着一堆散乱念头）
+            // 思绪写回链，下一轮接着这句往下想
             chain.Thought = round.Thought;
             chain.UpdatedAt = Now();
             _chains.Save(chain);
@@ -801,14 +877,14 @@ public sealed class IdeaEngine : BackgroundService
                         Reason = round.Why.Length > 0 ? round.Why : "这一轮不打算做什么",
                     });
 
-                // selfOnly 的那一轮保留 no_intent 这个标签，
-                // 一眼能看出"想了但没动机"，而不是和"想了但没念头"混成一个 no_idea。
+                // selfOnly 保留 no_intent 标签，
+                // 一眼能看出"想了但没动机"
                 round.Outcome = round.Boost.Length > 0
                     ? "weight_only"
                     : (selfOnly ? "no_intent" : "no_idea");
                 if (round.Why.Length == 0) round.Why = "这一轮不打算做什么";
 
-                // 够重却没做 → 记一次未兑现。驱动措辞升级，最后承认做不到。
+                // 够重却没做 → 记一次未兑现。驱动措辞升级，最后承认做不到
                 _chains.NoteUnfulfilled();
                 Finish(round, sw);
                 return;
@@ -820,20 +896,10 @@ public sealed class IdeaEngine : BackgroundService
             var chosen = action;
             if (chosen.Target.Length == 0) chosen.Target = target;
 
-            // 模型经常把「发到哪儿」写进 intent（intent=private / intent=group）。
-            // 那不是动作类型，落点。硬当意图用，会被白名单判成「意图不在允许列表」拦掉。
-            // 实盘 23:00 / 23:05 / 23:10 / 00:05 那四条本该放行的话就是这么被拦的。
+            // 模型经常把「发到哪儿」写进 intent 会被白名单判成「意图不在允许列表」拦掉。
             chosen.Intent = NormalizeIntent(chosen.Intent);
-
-            // ---- 怎么发、什么时候发
-            //
-            // 收敛只说了「这件事要办」，没说在哪儿办、这个点办合不合适。
-            // 少了这一步，实盘就会冒出两件事：同一句问话群里说一次私聊又说一次；
-            // 半夜十二点发消息问人醒着吗。
-            //
-            // 判下来做不了（时机不对 / 会打扰 / 没合适的地方）就先压着：
-            // 这件事在停放的这几小时里**不进下一轮的任何输入**，所以不会被反复想起、
-            // 反复换措辞重拟。到期再拿出来，那时时间跨度大了，原本做不了的往往就能做了。
+            // 收敛只说了「这件事要办」，没说在哪儿办、这个点办合不合适
+            // 判下来做不了就先压着：到期再拿出来，那时时间跨度大了，原本做不了的往往就能做了
             if (_env.Idea.Route.Enabled)
             {
                 var swRoute = System.Diagnostics.Stopwatch.StartNew();
@@ -903,15 +969,15 @@ public sealed class IdeaEngine : BackgroundService
                 round.BlockedBy = record.BlockedBy;
                 round.Detail = record.BlockedDetail;
 
-                // 被闸拦下也是一次「提过了」：占个位，冷却期内别再想它。
-                // 不占位的话下一轮还会原样再提一遍，闸一直拦、token 一直烧。
+                // 被闸拦下也是一次「提过了」：占个位，冷却期内别再想它
+                // 不占位的话下一轮还会原样再提一遍，闸一直拦、token 一直烧
                 MarkResolved(chain, round.Topic, chosen.Target, chosen.Text, delivered: false);
 
                 Finish(round, sw);
                 return;
             }
 
-            // ---- 执行
+            // 执行
             SetPhase("发送中", chosen.Text);
             var parts = _sender.Segment(chosen.Text);
             var sends = await _sender.SendSegmentsAsync(chosen.Target, parts, null, ct);
@@ -930,23 +996,16 @@ public sealed class IdeaEngine : BackgroundService
             round.Spoke = chosen.Text;
 
             // 实际送到哪儿。落点判定可能把 group:X 改成 private:Y，
-            // 这时 round.Target（这回在想谁）和真正发到的地方已经不是一回事了。
             round.SentTo = chosen.Target;
 
-            // ---- 消费：真的做了，就把对应落点的加权意向划掉
-            //
-            // 这是"卡心结"的正解。以前 action 发出去与加权意向毫无关系，
-            // 于是一条意向做完了也还挂在 1.00 上，继续占上下文、继续被反复想起。
+            // 消费：真的做了，就把对应落点的加权意向划掉
+            // 卡心结的可能性修复
             try
             {
                 var (ck, ct2) = SplitTarget(chosen.Target);
                 var consumed = _chains.ConsumeByTarget(ck, ct2);
 
-                // 了结：记下这件事做完了，并且**把承载它的思绪清掉**。
-                //
-                // 不清会有个死循环：这一轮思绪写「梦想还欠着」，下一轮发散读到
-                // 「上一版的思绪：梦想还欠着」，于是又想一遍、又答一遍。
-                // 实测同一件事 50 分钟内被重做 6 次。
+                // 记下这件事做完了，把承载它的思绪清掉
                 MarkResolved(chain, round.Topic, chosen.Target, chosen.Text, delivered: true);
 
                 if (consumed > 0)
@@ -1043,7 +1102,9 @@ public sealed class IdeaEngine : BackgroundService
 
 
     //坑：每轮喂同一份静态材料，模型每轮都得出同一个结论
-    /// <summary>给发散层看的材料。**刻意不接对话上下文**——它只读文件与最近日志，</summary>
+    /// <summary>
+    /// 给发散层看的材料。**刻意不接对话上下文**——它只读文件与最近日志
+    /// </summary>
     private string BuildContext(string target, IdeaChain chain, IdeaInputs inputs)
     {
         var cfg = _env.Idea.Chain;
@@ -1153,7 +1214,9 @@ public sealed class IdeaEngine : BackgroundService
         return sb.ToString();
     }
 
-    /// <summary>节点一：**根据上下文发呆**（用户需求）。</summary>
+    /// <summary>
+    /// 节点一：**根据上下文发呆**（用户需求）
+    /// </summary>
     private string BuildUserContext(string target, IdeaChain chain, IdeaInputs inputs, SpeakIntent? intent)
     {
         var cfg = _env.Idea.Chain;
@@ -1210,7 +1273,9 @@ public sealed class IdeaEngine : BackgroundService
         return TrimTo(sb.ToString(), 5000);
     }
 
-    /// <summary>节点二：**根据记忆碎片发呆**（自我意图）。</summary>
+    /// <summary>
+    /// 节点二：**根据记忆碎片发呆**（自我意图）
+    /// </summary>
     /// <summary>
     /// 把一件做完的事记成"已了结"，并清掉承载它的思绪。
     ///
@@ -1303,11 +1368,10 @@ public sealed class IdeaEngine : BackgroundService
 
         if (inputs.PrevThought.Length > 0)
             sb.AppendLine().AppendLine("【上一版的思绪】").AppendLine(inputs.PrevThought);
-        // 做完的事只报个数，不复述内容。
+        // 做完的事只报个数，不复述内容
         //
-        // 原来这里把每条的 topic 和 did 都列出来，等于每轮都把「我做过什么」重新念一遍。
-        // 模型读到就会顺着它联想，于是「做完了还在想」永远停不下来。
-        // 防重提已经由 resolved + 全局了结表在代码层挡住了，不需要再喂给模型看。
+        // 列出 topic 和 did 等于每轮重新念一遍，模型读到就会顺着它联想
+        // 防重提已经由 resolved 和全局了结表在代码层挡住
         if (chain.Resolved.Count > 0)
             sb.AppendLine().AppendLine($"【已经了结的】{chain.Resolved.Count} 件（都不必再想，也不必再提）");
 
@@ -1321,16 +1385,17 @@ public sealed class IdeaEngine : BackgroundService
         return TrimTo(sb.ToString(), Math.Max(1200, cfg.MaxContextChars));
     }
 
-    /// <summary>把这一轮看到的东西**分层**采集下来，供后台展示「发散看到什么」。</summary>
+    /// <summary>
+    /// 把这一轮看到的东西**分层**采集下来，供后台展示「发散看到什么」
+    /// </summary>
     private void CaptureInputs(string target, IdeaChain chain, IdeaInputs inputs)
     {
         var cfg = _env.Idea.Chain;
 
         // 自我
         //
-        // 这里必须和聊天那一路（ChatPipeline.BuildSystem）取同一套段落。
-        // 原来只取 identity/style/interest，漏了 boundaries——于是主动发言时说出来的
-        // 话没有边界约束，人格明显比正常回复松，看着就是"人设偏离"。
+        // 必须和 ChatPipeline.BuildSystem 取同一套段落
+        // 漏掉 boundaries 时主动发言没有边界约束，人格比正常回复明显松
         var view = _persona.Read();
         var segs = Persona.ParseSegments(view.Md);
         foreach (var key in new[] { "identity", "style", "interest", "boundaries" })
@@ -1370,11 +1435,10 @@ public sealed class IdeaEngine : BackgroundService
                     (e.IsSelf ? "我" : (e.Name.Length > 0 ? e.Name : e.UserId)) + "：" +
                     (e.Text.Length > 30 ? e.Text[..30] : e.Text));
 
-            // 记忆碎片：从**思想储存**里取，不再直接读浅层碎片。
+            // 记忆碎片从思想储存取，不再直接读浅层碎片
             //
-            // 浅层碎片是原料：一段话能拆出七八条，三条说的还是同一件事，
-            // 直接拿它发散，长出来的必然还是那几句。储存里是「一件事一条」，
-            // 而且没被取用过的排在前面，同一条不会连着用。
+            // 碎片是原料，三条常说的是同一件事，拿它发散只能长出那几句
+            // 储存里是一件事一条，没被取用过的排在前面，同一条不会连着用
             var seeds = _ideaStore.Top(4);
             foreach (var s in seeds)
             {
@@ -1422,7 +1486,9 @@ public sealed class IdeaEngine : BackgroundService
         }
     }
 
-    /// <summary>浅层记忆里关于这个对象的最近几条碎片。</summary>
+    /// <summary>
+    /// 浅层记忆里关于这个对象的最近几条碎片
+    /// </summary>
     private List<string> RememberedFragments(string target, int max)
     {
         var list = new List<string>();
@@ -1446,7 +1512,9 @@ public sealed class IdeaEngine : BackgroundService
         return list;
     }
 
-    /// <summary>把模型给的 target 规范化成 private:&lt;QQ&gt; / group:&lt;群号&gt;。</summary>
+    /// <summary>
+    /// 把模型给的 target 规范化成 private:&lt;QQ&gt; / group:&lt;群号&gt;
+    /// </summary>
     private string ResolveTarget(string raw, string fallback)
     {
         var t = (raw ?? "").Trim();
@@ -1497,7 +1565,9 @@ public sealed class IdeaEngine : BackgroundService
         return sb.ToString();
     }
 
-    /// <summary>收敛层的输入：两路节点分开标注，让模型知道哪些来自上下文、哪些来自自己。</summary>
+    /// <summary>
+    /// 收敛层的输入：两路节点分开标注，让模型知道哪些来自上下文、哪些来自自己
+    /// </summary>
     private static string BuildThoughtsText(List<string> userSide, List<string> selfSide)
     {
         var sb = new StringBuilder();
@@ -1520,7 +1590,9 @@ public sealed class IdeaEngine : BackgroundService
     }
 
 
-    /// <summary>发散节点一：从上下文发呆（用户需求）。</summary>
+    /// <summary>
+    /// 发散节点一：从上下文发呆（用户需求）
+    /// </summary>
     private const string DivergeUserPrompt = """
         你在发呆，而且只看眼前这一段对话。
 
@@ -1541,7 +1613,9 @@ public sealed class IdeaEngine : BackgroundService
         {"thoughts":["...","..."]}
         """;
 
-    /// <summary>发散节点二：从记忆碎片发呆（自我意图）。</summary>
+    /// <summary>
+    /// 发散节点二：从记忆碎片发呆（自我意图）
+    /// </summary>
     private const string DivergeSelfPrompt = """
         你在发呆，而且只看自己记着的东西。
 
@@ -1671,7 +1745,9 @@ public sealed class IdeaEngine : BackgroundService
         public string Reason { get; set; } = "";
     }
 
-    /// <summary>解析收敛层的双输出：答复（reply）+ 意图（intent）。</summary>
+    /// <summary>
+    /// 解析收敛层的双输出：答复（reply）+ 意图（intent）
+    /// </summary>
     private (string reply, string topic, string why, IdeaWeight? weight, IdeaCandidate? action) ParseVerdict(
         string raw, string fallbackTarget)
     {
@@ -1710,11 +1786,10 @@ public sealed class IdeaEngine : BackgroundService
             var resolved = ResolveTarget(targetRaw, fallbackTarget);
             var (tKind, tId) = SplitTarget(resolved);
 
-            // ---- 落点由**实体**定，不由模型自由发挥
+            // 落点由实体定，不由模型自由发挥
             //
-            // 实盘问题：同一批事（梦想 / 喊困 / 关系试探）被记到了 3 个不同落点，
-            // 其中一个还挂在 Liebe 名下、内容却全是星涵的事。
-            // 所以让收敛多给一个 about（这件事关于谁），校验成实体后**覆盖落点**。
+            // 模型给的 about 校验成实体后覆盖落点
+            // 否则同一批事会被记到几个不同落点，甚至记到别人名下
             var origin = Str(it, "origin").ToLowerInvariant() == "self" ? "self" : "context";
             var about = Str(it, "about");
             var aboutId = ResolveEntityId(about);
@@ -1806,7 +1881,9 @@ public sealed class IdeaEngine : BackgroundService
         }
     }
 
-    /// <summary>把"这件事关于谁"解析成实体 id（QQ 号）。</summary>
+    /// <summary>
+    /// 把"这件事关于谁"解析成实体 id（QQ 号）
+    /// </summary>
     private string ResolveEntityId(string about)
     {
         var a = (about ?? "").Trim().Trim('@', '「', '」', '“', '”');
@@ -1818,7 +1895,9 @@ public sealed class IdeaEngine : BackgroundService
         return hit?.UserId ?? "";
     }
 
-    /// <summary>把 private:123 / group:456 拆成 (private|group, 123|456)。</summary>
+    /// <summary>
+    /// 把 private:123 / group:456 拆成 (private|group, 123|456)
+    /// </summary>
     private static (string kind, string id) SplitTarget(string target)
     {
         var t = (target ?? "").Trim();
@@ -1862,7 +1941,9 @@ public sealed class IdeaEngine : BackgroundService
     }
 
 
-    /// <summary>这个话题现在是不是该闭嘴了（做过了 / 停放着 / 冷却中）。</summary>
+    /// <summary>
+    /// 这个话题现在是不是该闭嘴了（做过了 / 停放着 / 冷却中）
+    /// </summary>
     private bool IsSuppressed(IdeaChain chain, string topic)
     {
         var t = (topic ?? "").Trim();
@@ -1891,7 +1972,9 @@ public sealed class IdeaEngine : BackgroundService
     }
 
 
-    /// <summary>把模型写成落点的 intent 折回真正的动作类型。</summary>
+    /// <summary>
+    /// 把模型写成落点的 intent 折回真正的动作类型
+    /// </summary>
     private static string NormalizeIntent(string intent)
     {
         var s = (intent ?? "").Trim().ToLowerInvariant();
@@ -1904,10 +1987,14 @@ public sealed class IdeaEngine : BackgroundService
         };
     }
 
-    /// <summary>两个主题标签是不是同一件事。</summary>
+    /// <summary>
+    /// 两个主题标签是不是同一件事
+    /// </summary>
     private static bool SameTopic(string a, string b) => IdeaChainStore.SameTopic(a, b);
 
-    /// <summary>从尾部数：连续多少条和给定主题是同一件事。</summary>
+    /// <summary>
+    /// 从尾部数：连续多少条和给定主题是同一件事
+    /// </summary>
     private static int TrailingRepeat(List<string> topics, string topic)
     {
         var n = 0;

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Gateway;
 using StarGameAI.Llm;
@@ -6,7 +6,9 @@ using StarGameAI.Pipeline;
 
 namespace StarGameAI.Core;
 
-/// <summary>对话分块的观测器：判断「这条消息维护的是哪个块 / 开了新块 / 判不了」。</summary>
+/// <summary>
+/// 对话分块的观测器：判断「这条消息维护的是哪个块 / 开了新块 / 判不了」
+/// </summary>
 public sealed class DialogueRouter
 {
     private const string JudgePrompt = """
@@ -56,7 +58,9 @@ public sealed class DialogueRouter
 
     private string AuditFile => Path.Combine(_env.AuditDir, "dialogue.jsonl");
 
-    /// <summary>对一条消息做归属判定（observe 模式下不影响行为）。</summary>
+    /// <summary>
+    /// 对一条消息做归属判定（observe 模式下不影响行为）
+    /// </summary>
     public async Task<RouteResult> ObserveAsync(ParsedMessage msg, CancellationToken ct = default)
     {
         var cfg = _env.Dialogue;
@@ -178,12 +182,10 @@ public sealed class DialogueRouter
                     return ("unresolved", "", conf / 100.0, "model",
                         why.Length > 0 ? why : "模型说看不出", candidates);
 
-                // "新话题"也要置信度够。
+                // 新话题也要置信度够
                 //
-                // 这是实测抓到的一个真 bug：原来 `new` 不受门槛约束，
-                // 于是模型回一句「仅发图片，无文字线索，难判断归属」confidence=30，
-                // 我们照样开一个新块——每个不知所措的瞬间都凭空长出一个块。
-                // 结果某个群一天长出 57 个块，而"判不了比例"被算成了 0.7%（假象）。
+                // new 不受门槛约束时，每个判不了的瞬间都会凭空长出一个块
+                // 某个群一天长出过 57 个块，而判不了的比例被算成了 0.7%
                 if (blockId == "new")
                 {
                     return ok
@@ -354,7 +356,9 @@ public sealed class DialogueRouter
         for (var i = cfg.MaxHotBlocks; i < hot.Count; i++) hot[i].State = "cold";
     }
 
-    /// <summary>看起来是"一个人在跟我说"（@我 / 叫我名字 / 私聊）。</summary>
+    /// <summary>
+    /// 看起来是"一个人在跟我说"（@我 / 叫我名字 / 私聊）
+    /// </summary>
     private bool LooksOneToOne(ParsedMessage msg)
     {
         if (msg.IsPrivate || msg.Addressed) return true;
@@ -502,7 +506,9 @@ public sealed class DialogueRouter
     }
 
 
-    /// <summary>读审计算指标（后台用）。unresolved_rate 是方案成立与否的第一判据。</summary>
+    /// <summary>
+    /// 读审计算指标（后台用）。unresolved_rate 是方案成立与否的第一判据
+    /// </summary>
     public DialogueStats Stats(int days = 1)
     {
         var stats = new DialogueStats { WindowDays = days };

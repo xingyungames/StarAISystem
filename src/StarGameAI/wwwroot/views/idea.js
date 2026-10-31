@@ -971,6 +971,7 @@ export function render(container, api) {
       perHour: numValue('每小时最多想几次', think.max_rounds_per_hour, '1', 'think.max_rounds_per_hour；超了本轮直接跳过'),
       perDay: numValue('每天最多想几次', think.max_rounds_per_day, '1', 'think.max_rounds_per_day'),
       activeMin: numValue('多久内有对话才值得想（分钟）', think.active_within_minutes, '1', 'think.active_within_minutes；安静太久就不空转'),
+      quiet: checkField('静默时段整轮跳过', '不勾的话夜里照样跑完整条链，只是发不出去——纯烧算力', think.skip_quiet_hours),
       targets: numValue('一轮最多想几个对象', think.max_targets_per_round, '1', 'think.max_targets_per_round'),
       thoughts: numValue('一次最多冒几个念头', think.max_candidates, '1', 'think.max_candidates'),
     };
@@ -1049,6 +1050,7 @@ export function render(container, api) {
         max_rounds_per_hour: t.perHour.get(),
         max_rounds_per_day: t.perDay.get(),
         active_within_minutes: t.activeMin.get(),
+        skip_quiet_hours: t.quiet.get(),
         max_targets_per_round: t.targets.get(),
         max_candidates: t.thoughts.get(),
       },

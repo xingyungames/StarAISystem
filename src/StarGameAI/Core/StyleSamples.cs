@@ -1,42 +1,64 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace StarGameAI.Core;
 
-/// <summary>一条「我私下里说话的样子」样本。</summary>
+/// <summary>
+/// 一条「我私下里说话的样子」样本
+/// </summary>
 public sealed class StyleSample
 {
     public string Id { get; set; } = "";
     public long Ts { get; set; }
     public string Scope { get; set; } = "";
-    /// <summary>manual（人喂的）/ model（模型自评出来的）</summary>
+    /// <summary>
+    /// manual（人喂的）/ model（模型自评出来的）
+    /// </summary>
     public string Source { get; set; } = "model";
-    /// <summary>approved / rejected / pending</summary>
+    /// <summary>
+    /// approved / rejected / pending
+    /// </summary>
     public string Verdict { get; set; } = "pending";
     public string Text { get; set; } = "";
-    /// <summary>模型自评：这句像不像你平时的样子（0~100）</summary>
+    /// <summary>
+    /// 模型自评：这句像不像你平时的样子（0~100）
+    /// </summary>
     public int SelfScore { get; set; }
-    /// <summary>有效权重。人工标注给满，模型自评按不确定度打折。</summary>
+    /// <summary>
+    /// 有效权重。人工标注给满，模型自评按不确定度打折
+    /// </summary>
     public double Weight { get; set; }
     public long UpdatedAt { get; set; }
 }
 
-/// <summary>样本集合的不确定度与当前准入模式。</summary>
+/// <summary>
+/// 样本集合的不确定度与当前准入模式
+/// </summary>
 public sealed class StyleState
 {
     public int Approved { get; set; }
     public int Pending { get; set; }
     public int Rejected { get; set; }
-    /// <summary>已批准样本之间的一致性（0~1，越高越"像同一个人说的"）</summary>
+    /// <summary>
+    /// 已批准样本之间的一致性（0~1，越高越"像同一个人说的"）
+    /// </summary>
     public double Consistency { get; set; }
-    /// <summary>覆盖度：样本数相对目标的完成比例（0~1）</summary>
+    /// <summary>
+    /// 覆盖度：样本数相对目标的完成比例（0~1）
+    /// </summary>
     public double Coverage { get; set; }
-    /// <summary>不确定度（0~1）。越高越该听人的。</summary>
+    /// <summary>
+    /// 不确定度（0~1）。越高越该听人的
+    /// </summary>
     public double Uncertainty { get; set; }
-    /// <summary>manual / assisted / adaptive</summary>
+    /// <summary>
+    /// manual / assisted / adaptive
+    /// </summary>
     public string Mode { get; set; } = "manual";
 }
 
-/// <summary>风格样本库 + 不确定性驱动的准入门。</summary>
+/// <summary>
+/// 风格样本库 + 不确定性驱动的准入门
+/// </summary>
 public sealed class StyleStore
 {
     private readonly Env _env;
@@ -92,13 +114,10 @@ public sealed class StyleStore
             ? 1.0
             : Math.Min(1.0, approved.Count / (double)cfg.TargetSamples);
 
-        // 一致性：已批准样本在**风格特征**上的离散度。样本 < 2 时视为"不知道"，给 0。
+        // 一致性：已批准样本在风格特征上的离散度。样本 < 2 时视为不知道，给 0
         //
-        // 注意这里**不能用文本相似度**。第一版就是拿 TextSim（字符二元组）算的，
-        // 实测 8 条明显是同一个语气的样本只给出 consistency=0.002——
-        // 「（沉默了一会儿）你想听的话，我可以叫一声。」和「（没接话，耳朵有点热）」
-        // 在字面上几乎没有共同二元组，但谁看了都知道是同一个人的话。
-        // 这和之前"整句相似度抓不住同一主题"是同一个教训：**风格不是词汇重叠**。
+        // 不能用文本相似度：8 条明显同语气的样本只算出 0.002
+        // 风格不是词汇重叠
         double consistency = 0;
         if (approved.Count >= 2)
         {
@@ -138,7 +157,9 @@ public sealed class StyleStore
     }
 
 
-    /// <summary>人工喂一条样本：直接批准，权重满格。</summary>
+    /// <summary>
+    /// 人工喂一条样本：直接批准，权重满格
+    /// </summary>
     public StyleSample AddManual(string text, string scope)
     {
         var s = new StyleSample
@@ -164,7 +185,9 @@ public sealed class StyleStore
         return s;
     }
 
-    /// <summary>模型自评出来的候选。**按当前不确定度决定要不要直接收**：</summary>
+    /// <summary>
+    /// 模型自评出来的候选。**按当前不确定度决定要不要直接收**：
+    /// </summary>
     public (bool accepted, string mode) Propose(StyleSample candidate)
     {
         var cfg = _env.Style;
@@ -234,7 +257,9 @@ public sealed class StyleStore
         }
     }
 
-    /// <summary>注入用的样本：已批准、按权重取前几条。</summary>
+    /// <summary>
+    /// 注入用的样本：已批准、按权重取前几条
+    /// </summary>
     public List<StyleSample> Top(int max = 4) =>
         Load()
             .Where(s => s.Verdict == "approved" && s.Text.Trim().Length > 0)
@@ -243,7 +268,9 @@ public sealed class StyleStore
             .Take(max)
             .ToList();
 
-    /// <summary>风格特征向量（每维 0~1）。**只看结构，不看词汇**——</summary>
+    /// <summary>
+    /// 风格特征向量（每维 0~1）。**只看结构，不看词汇**——
+    /// </summary>
     private static double[] StyleVector(string text)
     {
         var t = (text ?? "").Trim();

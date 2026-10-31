@@ -20,13 +20,19 @@ public sealed class SleepSignal
     public bool Consumed { get; set; }
 }
 
-/// <summary>睡眠状态：进程内可见，同时落盘以便重启后仍能读到上次结果。</summary>
+/// <summary>
+/// 睡眠状态：进程内可见，同时落盘以便重启后仍能读到上次结果
+/// </summary>
 public sealed class SleepState
 {
     public bool Sleeping { get; set; }
-    /// <summary>上一次**成功**巩固的时间。作息的最小间隔按它算。</summary>
+    /// <summary>
+    /// 上一次**成功**巩固的时间。作息的最小间隔按它算
+    /// </summary>
     public long LastRunTs { get; set; }
-    /// <summary>上一次尝试的时间（无论成败）。失败退避按它算。</summary>
+    /// <summary>
+    /// 上一次尝试的时间（无论成败）。失败退避按它算
+    /// </summary>
     public long LastAttemptTs { get; set; }
     public int LastRev { get; set; }
     public bool LastOk { get; set; }
@@ -44,9 +50,13 @@ public sealed class Candidate
     public string UserId { get; set; } = "";
     public string UserName { get; set; } = "";
     public List<string> Evidence { get; set; } = new();
-    /// <summary>commitment 专用：生效范围（空 = 到处都算）。</summary>
+    /// <summary>
+    /// commitment 专用：生效范围（空 = 到处都算）
+    /// </summary>
     public List<string> ValidIn { get; set; } = new();
-    /// <summary>commitment 专用：hard / soft。</summary>
+    /// <summary>
+    /// commitment 专用：hard / soft
+    /// </summary>
     public string Strictness { get; set; } = "";
 }
 
@@ -64,11 +74,15 @@ public sealed class ConsolidateOutcome
     public int Candidates { get; set; }
     public int Written { get; set; }
     public int PersonaRev { get; set; }
-    /// <summary>本轮更新了几个深层画像（人 + 群）。</summary>
+    /// <summary>
+    /// 本轮更新了几个深层画像（人 + 群）
+    /// </summary>
     public int Absorbed { get; set; }
 }
 
-/// <summary>睡眠巩固：分片 → 分流 → 归并 → 校验 → 提交。</summary>
+/// <summary>
+/// 睡眠巩固：分片 → 分流 → 归并 → 校验 → 提交
+/// </summary>
 public sealed class Consolidator
 {
     private const string DistillPrompt = """
@@ -173,11 +187,10 @@ public sealed class Consolidator
 
     public void RaiseSignal(string reason)
     {
-        // 必须写成**一行一条**。
+        // 必须写成一行一条
         //
-        // 这里原来用的是 AppJson.Config，它带 WriteIndented，一条信号会摊成五行；
-        // 而 Signals() 是按行反序列化的，于是每一行都是坏行、全被跳过，
-        // HasPendingSignal() 恒为 false —— AI 调 request_sleep 永远"已记下"，永远不真睡。
+        // 带缩进的序列化会让一条信号摊成五行，而 Signals 按行读
+        // 每行都是坏行、全被跳过，HasPendingSignal 就恒为 false
         var line = JsonSerializer.Serialize(new SleepSignal
         {
             Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -274,7 +287,9 @@ public sealed class Consolidator
 
     public bool IsRunning => _state.Sleeping;
 
-    /// <summary>一轮巩固成功后把所有睡眠信号标记为已消费（保留历史记录）。</summary>
+    /// <summary>
+    /// 一轮巩固成功后把所有睡眠信号标记为已消费（保留历史记录）
+    /// </summary>
     public void ConsumeSignals()
     {
         if (!File.Exists(SignalFile)) return;
@@ -335,7 +350,9 @@ public sealed class Consolidator
         }
     }
 
-    /// <summary>从私聊片段里挑我自己的回复，让模型自评「像不像我平时说话的样子」，然后交给</summary>
+    /// <summary>
+    /// 从私聊片段里挑我自己的回复，让模型自评「像不像我平时说话的样子」，然后交给
+    /// </summary>
     private async Task CollectStyleCandidatesAsync(List<Chunk> chunks, CancellationToken ct)
     {
         const string prompt = """
@@ -824,7 +841,6 @@ public sealed class Consolidator
         };
     }
 
-    // -- 分片 -------------------------------------------------------------
     public List<Chunk> BuildChunks(List<LogEntry> entries)
     {
         var cfg = _env.Sleep.Chunk;
@@ -865,8 +881,9 @@ public sealed class Consolidator
         return chunks;
     }
 
-    // -- 分流 -------------------------------------------------------------
-    /// <summary>返回 (是否成功, 候选列表)。失败必须让调用方知道，否则水位线会错误推进。</summary>
+    /// <summary>
+    /// 返回 (是否成功, 候选列表)。失败必须让调用方知道，否则水位线会错误推进
+    /// </summary>
     private async Task<(bool ok, List<Candidate> list)> DistillAsync(Chunk chunk, CancellationToken ct)
     {
         var sb = new StringBuilder();
@@ -913,7 +930,9 @@ public sealed class Consolidator
         }
     }
 
-    /// <summary>identity 候选的硬校验：**「我叫 X」里的 X 必须是我自己的名字**。</summary>
+    /// <summary>
+    /// identity 候选的硬校验：**「我叫 X」里的 X 必须是我自己的名字**
+    /// </summary>
     private List<Candidate> GuardIdentity(List<Candidate> list, Chunk chunk)
     {
         var selfNames = KnownSelfNames();
@@ -944,7 +963,9 @@ public sealed class Consolidator
         return list;
     }
 
-    /// <summary>我现在确认叫哪些名字：人设【身份】里的 + 配置的 bot_names。</summary>
+    /// <summary>
+    /// 我现在确认叫哪些名字：人设【身份】里的 + 配置的 bot_names
+    /// </summary>
     private List<string> KnownSelfNames()
     {
         var names = new List<string>();
@@ -966,7 +987,9 @@ public sealed class Consolidator
         return names.Where(n => n.Length > 0).Distinct().ToList();
     }
 
-    /// <summary>从「我叫 X / 我的名字是 X」里抠出被断言的名字。</summary>
+    /// <summary>
+    /// 从「我叫 X / 我的名字是 X」里抠出被断言的名字
+    /// </summary>
     private static string ClaimedSelfName(string text)
     {
         var body = text ?? "";
@@ -1009,7 +1032,6 @@ public sealed class Consolidator
         }
     }
 
-    // -- 深层画像吸收 -----------------------------------------------------
     private const string PersonProfilePrompt = """
         你在维护「我对某个人」的长期画像。这类画像变化很慢，追求稳定，不追求细节。
 
@@ -1059,7 +1081,9 @@ public sealed class Consolidator
         public string Target { get; set; } = "";
     }
 
-    /// <summary>把浅层碎片收敛进深层画像。</summary>
+    /// <summary>
+    /// 把浅层碎片收敛进深层画像
+    /// </summary>
     private async Task<int> AbsorbAsync(List<Chunk> chunks, CancellationToken ct)
     {
         var pol = _env.Memory;
@@ -1105,16 +1129,13 @@ public sealed class Consolidator
 
     private async Task<bool> RewritePersonProfileAsync(string userId, string name, CancellationToken ct)
     {
-        // 收集该用户的**全部**碎片（含已吸收的）作为归纳原料。
+        // 收集该用户的全部碎片（含已吸收的）作为归纳原料
         //
-        // 为什么不是只取「未吸收」：深层画像的定义是「从原料反复归纳出的稳定结论」，
-        // 不是「增量摘要」。只喂增量的话，画像一旦写歪就永远纠不回来——
-        // 因为证据里再也看不到相反的例子。absorbed 只是「这一轮处理过」的标记，
-        // 不能当过滤条件用。
+        // 只喂增量的话画像写歪就纠不回来，证据里再也看不到反例
+        // absorbed 只是「这一轮处理过」的标记，不能当过滤条件
         //
-        // 三条排除规则（都是实盘踩出来的）：
-        //   - identity / capability 是「关于我自己」的，绝不能进别人的画像；
-        //   - 群聊里的 event 归群的事件画像管，私聊里的 event 只能归这个人的画像。
+        // 排除 identity / capability：那是关于我自己的，不能进别人的画像
+        // 私聊里的 event 只归这个人的画像，群聊里的归群的事件画像
         var fragments = new List<(string Scope, MemEntry Entry)>();
         var pending = 0;
 
@@ -1282,7 +1303,9 @@ public sealed class Consolidator
         return true;
     }
 
-    /// <summary>记录一次改写的前后差异，形成「自我变化度」时间序列。</summary>
+    /// <summary>
+    /// 记录一次改写的前后差异，形成「自我变化度」时间序列
+    /// </summary>
     private void RecordDelta(string kind, string target, string by, string before, string after, int absorbed, string note)
     {
         try
@@ -1306,7 +1329,9 @@ public sealed class Consolidator
         catch { /* 忽略 */ }
     }
 
-    /// <summary>两条 pattern 是否算同一个模式：归一化后相等，或一方是另一方的子串。</summary>
+    /// <summary>
+    /// 两条 pattern 是否算同一个模式：归一化后相等，或一方是另一方的子串
+    /// </summary>
     private static bool SamePattern(string a, string b)
     {
         var na = Core.TextSim.Normalize(a);
@@ -1380,7 +1405,6 @@ public sealed class Consolidator
         return body.Trim();
     }
 
-    // -- 自我描述重写 -----------------------------------------------------
     private const string IdentityPrompt = """
         你在维护「我」的自我描述。下面给出当前的自我描述，以及今天整理出的新认知。
 
@@ -1395,7 +1419,9 @@ public sealed class Consolidator
         如果没有值得更新的内容，就原样输出当前的自我描述。
         """;
 
-    /// <summary>让模型整段重写 identity 段，避免与旧内容自相矛盾。失败时返回 null（调用方退回追加）。</summary>
+    /// <summary>
+    /// 让模型整段重写 identity 段，避免与旧内容自相矛盾。失败时返回 null（调用方退回追加）
+    /// </summary>
     private async Task<string?> RewriteIdentityAsync(string current, List<string> newCognitions, CancellationToken ct)
     {
         try
@@ -1433,8 +1459,9 @@ public sealed class Consolidator
         }
     }
 
-    // -- 工具 -------------------------------------------------------------
-    /// <summary>能力缺口永远归到 capability，不进人设。</summary>
+    /// <summary>
+    /// 能力缺口永远归到 capability，不进人设
+    /// </summary>
     private static string MapKind(string kind) => kind switch
     {
         "identity" => "identity",
@@ -1458,7 +1485,9 @@ public sealed class Consolidator
         return sb.ToString();
     }
 
-    /// <summary>只保留字母与汉字并转小写，用于相似度比较（去掉标点带来的噪声）。</summary>
+    /// <summary>
+    /// 只保留字母与汉字并转小写，用于相似度比较（去掉标点带来的噪声）
+    /// </summary>
     private static string NormalizeAlnum(string text)
     {
         var sb = new StringBuilder();
@@ -1476,7 +1505,9 @@ public sealed class Consolidator
         return set;
     }
 
-    /// <summary>两条陈述是否算「同一件事」。</summary>
+    /// <summary>
+    /// 两条陈述是否算「同一件事」
+    /// </summary>
     private static bool IsSameClaim(string a, string b)
     {
         var na = NormalizeAlnum(a);
@@ -1507,10 +1538,14 @@ public sealed class Consolidator
         return sb.ToString();
     }
 
-    /// <summary>去掉标点与空白后的键：相同即视为同一条（安全去重用）。</summary>
+    /// <summary>
+    /// 去掉标点与空白后的键：相同即视为同一条（安全去重用）
+    /// </summary>
     public static string SimilarityKey(string text) => Core.TextSim.Normalize(text);
 
-    /// <summary>供后台「疑似重复」使用：0~1 的相似度（不做数字守卫，仅用于展示）。</summary>
+    /// <summary>
+    /// 供后台「疑似重复」使用：0~1 的相似度（不做数字守卫，仅用于展示）
+    /// </summary>
     public static double Similarity(string a, string b) => Core.TextSim.Similarity(a, b);
 
     private static string MergeIdentity(string current, string addition)
@@ -1523,7 +1558,9 @@ public sealed class Consolidator
         return string.Join("\n", lines.Where(l => l.Trim().Length > 0));
     }
 
-    /// <summary>只替换指定段的内容，其余原样保留。</summary>
+    /// <summary>
+    /// 只替换指定段的内容，其余原样保留
+    /// </summary>
     public static string Rebuild(string md, string key, string newText)
     {
         var open = $"<!--seg:{key}-->";

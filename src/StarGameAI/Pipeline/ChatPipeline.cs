@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
 using StarGameAI.Gateway;
@@ -9,10 +9,14 @@ using StarGameAI.Tools;
 
 namespace StarGameAI.Pipeline;
 
-/// <summary>主处理管线：门控 → 注入 → 生成（含工具循环）→ 发送 → 回写日志。</summary>
+/// <summary>
+/// 主处理管线：门控 → 注入 → 生成（含工具循环）→ 发送 → 回写日志
+/// </summary>
 public sealed class ChatPipeline
 {
-    /// <summary>内核（I1）：服务端常量，模型永远不可写，也不随对话改变。</summary>
+    /// <summary>
+    /// 内核（I1）：服务端常量，模型永远不可写，也不随对话改变
+    /// </summary>
     private const string Kernel = """
         你运行在一个文件系统之上，下面是你的读取规则：
 
@@ -52,7 +56,9 @@ public sealed class ChatPipeline
     private readonly DialogueRouter _dialogue;
     private readonly ILogger<ChatPipeline> _log;
 
-    /// <summary>内置工具：只登记睡眠意愿，不打断对话。</summary>
+    /// <summary>
+    /// 内置工具：只登记睡眠意愿，不打断对话
+    /// </summary>
     private static readonly ToolDef RequestSleepDef = new()
     {
         Function = new ToolFunctionDef
@@ -331,7 +337,9 @@ public sealed class ChatPipeline
             trace, steps, profile, parts.Count, answer.Length);
     }
 
-    /// <summary>把发出的每条消息写进聊天日志（AI 话语的唯一来源）。</summary>
+    /// <summary>
+    /// 把发出的每条消息写进聊天日志（AI 话语的唯一来源）
+    /// </summary>
     private void LogOutbound(string trace, ParsedMessage msg, List<string> parts,
         List<SendResult> results, string trigger)
     {
@@ -358,7 +366,6 @@ public sealed class ChatPipeline
         }
     }
 
-    // -- 追加机制 ---------------------------------------------------------
     private const string BurstPrompt = """
         你刚回完一句话。现在判断：还有没有必须补充的内容？
 
@@ -377,7 +384,9 @@ public sealed class ChatPipeline
         不需要补充就输出：{"messages":[]}
         """;
 
-    /// <summary>追加：主回复发完之后，按权重决定要不要再补几句。</summary>
+    /// <summary>
+    /// 追加：主回复发完之后，按权重决定要不要再补几句
+    /// </summary>
     private async Task TryBurstAsync(string trace, ParsedMessage msg, List<ChatMsg> messages,
         string mainAnswer, int alreadySent, CancellationToken ct)
     {
@@ -479,7 +488,9 @@ public sealed class ChatPipeline
             _log.LogInformation("追加发言 {Count} 条 trace={Trace}", extra.Count, trace);
     }
 
-    /// <summary>权重不够继续、但话没说完时，补一句收尾，避免停在半句上。</summary>
+    /// <summary>
+    /// 权重不够继续、但话没说完时，补一句收尾，避免停在半句上
+    /// </summary>
     private async Task SendClosingAsync(string trace, ParsedMessage msg, CancellationToken ct,
         List<(string text, string id)> sink)
     {
@@ -556,7 +567,6 @@ public sealed class ChatPipeline
         }
     }
 
-    // -- 提示词拼装 -------------------------------------------------------
     private string BuildSystem(string speaker, ParsedMessage msg, string memoryBlock)
     {
         var view = _persona.Read();
@@ -647,11 +657,10 @@ public sealed class ChatPipeline
             sb.Append("历史里 [图片]/[表情]/[语音] 这类占位符**标在谁名下就是谁发的**，")
               .Append("不要算到紧接着说话的人头上。\n");
 
-            // 跨场景接续：在群里跟熟人说话时，把私下里最近几句原文捞过来。
+            // 跨场景接续：群里跟熟人说话时，把私下最近几句原文捞过来
             //
-            // 「群聊和私聊完全两码事」的根子是历史按 scope 分文件存：
-            // 换个地方聊，对话连续性就断了，同一个人显得像另一个人。
-            // 碎片记忆能补"事实"，但接不上"刚才聊到哪"，所以这里补的是原话。
+            // 历史按 scope 分文件存，换个地方聊对话连续性就断了
+            // 碎片能补「事实」，接不上「刚才聊到哪」，所以这里补的是原话
             if (!msg.IsPrivate && msg.UserId.Length > 0 && _identity.IsPrivatePartner(msg.UserId))
             {
                 var privateScope = "private:" + msg.UserId;
@@ -671,11 +680,9 @@ public sealed class ChatPipeline
             }
         });
 
-        // 群聊最容易出的第二个错：把好几个人一起答了。
+        // 群聊最容易出的第二个错：把好几个人一起答了
         //
-        // 实盘里就是这样——A 问「我是谁」没被放行，紧接着 B @ 了一句，
-        // 回复里把 A 的问题和 B 的请求揉成一段，还先对着 A 答，看着像"连一起了"。
-        // 根子不在发送，在这条回复到底在回谁。所以把规矩写死在这里。
+        // 根子不在发送，在这条回复到底在回谁，所以规矩写死在下面
         sb.Append("\n【怎么回】\n")
           .Append("- 只回应**最新这一条**。历史里别人问过、而你当时没答的，不要在这次一并补上。\n")
           .Append("- 一次只对一个人说话。如果同时有两个人在跟你说话，只回最新的那个，另一个下次再说。\n")
@@ -727,8 +734,9 @@ public sealed class ChatPipeline
         catch (Exception ex) { _log.LogWarning("身份卡注入失败：{Error}", ex.Message); }
     }
 
-    // -- 对话历史 ---------------------------------------------------------
-    /// <summary>把最近若干条聊天记录拼成 messages。</summary>
+    /// <summary>
+    /// 把最近若干条聊天记录拼成 messages
+    /// </summary>
     private List<ChatMsg> HistoryMessages(string scope, string excludeMessageId)
     {
         var cfg = _env.Server.Context;
@@ -783,8 +791,9 @@ public sealed class ChatPipeline
         return result;
     }
 
-    // -- 记忆注入 ---------------------------------------------------------
-    /// <summary>记忆注入分两层：</summary>
+    /// <summary>
+    /// 记忆注入分两层：
+    /// </summary>
     private string RecallBlock(string scope, string query, string userId)
     {
         var sb = new StringBuilder();
@@ -803,11 +812,10 @@ public sealed class ChatPipeline
                 }
             }
 
-            // ---- 跨场景桥：在群里说话时，补上这个人的私聊记忆
+            // 跨场景桥：群里说话时补上这个人的私聊记忆
             //
-            // 记忆是按 scope 分文件存的，所以"私聊里熟的两个人"一进群就互相变陌生人。
-            // 这里显式把这个人私聊里的碎片捞几条过来，跟当前场景无关但跟这个人强相关。
-            // 只捞未吸收的（已被画像吸收的没必要重复），最多 3 条。
+            // 记忆按 scope 分文件存，私聊里熟的两个人一进群就互相变陌生人
+            // 只捞未吸收的，最多 3 条
             if (userId.Length > 0 && scope.StartsWith("group:", StringComparison.Ordinal))
             {
                 try
@@ -865,12 +873,10 @@ public sealed class ChatPipeline
                 }
             }
 
-            // ---- 约定与边界：跨场景全部找出来，标清"在哪儿成立"
+            // 约定与边界：跨场景全部找出来，标清在哪儿成立
             //
-            // 实盘那次翻车就是这一层缺失：私聊里立了「叫姐姐但别到处说」这个约定，
-            // 结果只记下一条无条件的「我平时叫她星涵或姐姐」，群里当场就叫了。
-            // 所以这里把所有跟这个人相关的约定都捞出来（不管在哪个 scope 谈成的），
-            // 并且**把生效范围明写出来**，让回复层自己判断这次能不能做。
+            // 漏了这层就会翻车：私聊立的约定被记成无条件的，群里当场越界
+            // 生效范围要明写出来，让回复层自己判断这次能不能做
             var commitments = CollectCommitments(scope, userId);
             if (commitments.Count > 0)
             {
@@ -893,14 +899,12 @@ public sealed class ChatPipeline
                 sb.AppendLine();
             }
 
-            // ---- 浅层：细节与近因（带分层唤醒）
+            // 浅层：细节与近因，按命中够不够逐级往上叫
             //
-            // 原来只有"挑 5 条、够 0.18 分就注入"这一档。问题是浅层记忆经常是空的
-            // （新场景、刚睡醒、群里没沉淀过），这时候它会一无所知地硬聊，
-            // 人设就显得特别飘。所以按"命中够不够"逐级往上叫：
-            //   1 档：本场景浅层碎片（原行为）
-            //   2 档：不够 → 这个人自己的画像 + 跨场景碎片（跟着人走，不跟着场景走）
-            //   3 档：还不够 → 该场景的历史归档（已被吸收、平时不注入的老记忆）
+            // 浅层常常是空的（新场景、刚睡醒），这时它会一无所知地硬聊，人设很飘
+            //   1 档 本场景浅层碎片
+            //   2 档 不够 → 这个人自己的画像 + 跨场景碎片（跟着人走）
+            //   3 档 还不够 → 该场景的历史归档
             var picked = Recall(scope, query, 5, 800);
             var recalled = picked.Count;
 
@@ -953,7 +957,9 @@ public sealed class ChatPipeline
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 
-    /// <summary>把所有跟这个人相关的「约定」捞出来，不管是在哪个会话里谈成的。</summary>
+    /// <summary>
+    /// 把所有跟这个人相关的「约定」捞出来，不管是在哪个会话里谈成的
+    /// </summary>
     private List<(MemEntry entry, List<string> where)> CollectCommitments(string scope, string userId)
     {
         var result = new List<(MemEntry, List<string>)>();
@@ -993,7 +999,9 @@ public sealed class ChatPipeline
             .ToList();
     }
 
-    /// <summary>我最近说过的话，**跨所有会话**。</summary>
+    /// <summary>
+    /// 我最近说过的话，**跨所有会话**
+    /// </summary>
     private List<(string scope, bool isSelf, string text, long ts)> RecentSelfSaid(int max = 8)
     {
         var list = new List<(string scope, bool isSelf, string text, long ts)>();
@@ -1014,7 +1022,9 @@ public sealed class ChatPipeline
             .ToList();
     }
 
-    /// <summary>睡眠巩固期间用的瘦身记忆：只留"这个人是谁 / 这个群是什么"，不翻碎片。</summary>
+    /// <summary>
+    /// 睡眠巩固期间用的瘦身记忆：只留"这个人是谁 / 这个群是什么"，不翻碎片
+    /// </summary>
     private string RecallBlockSlim(string scope, string userId)
     {
         var sb = new StringBuilder();
@@ -1049,7 +1059,9 @@ public sealed class ChatPipeline
         return sb.ToString();
     }
 
-    /// <summary>分层唤醒的第 2/3 档：浅层记忆捞不到东西的时候，再往深里叫一次。</summary>
+    /// <summary>
+    /// 分层唤醒的第 2/3 档：浅层记忆捞不到东西的时候，再往深里叫一次
+    /// </summary>
     private string DeepenRecall(string scope, string query, string userId)
     {
         var sb = new StringBuilder();
@@ -1110,7 +1122,9 @@ public sealed class ChatPipeline
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>打分排序：相关度 0.55 + 权重 0.20 + 时间衰减 0.15 + 类型加成 0.10。</summary>
+    /// <summary>
+    /// 打分排序：相关度 0.55 + 权重 0.20 + 时间衰减 0.15 + 类型加成 0.10
+    /// </summary>
     private List<(MemEntry entry, double score)> Recall(string scope, string query, int max, int budgetChars)
     {
         var q = Bigrams(query);

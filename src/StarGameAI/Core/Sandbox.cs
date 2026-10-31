@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 
 namespace StarGameAI.Core;
 
@@ -16,7 +16,9 @@ public sealed class SandboxEntry
     public long ModifiedAt { get; set; }
 }
 
-/// <summary>AI 的文件沙箱。内置工具与后台浏览都只能在这里活动。</summary>
+/// <summary>
+/// AI 的文件沙箱。内置工具与后台浏览都只能在这里活动
+/// </summary>
 public sealed class Sandbox
 {
     private static readonly UTF8Encoding Utf8 = new(false);
@@ -31,7 +33,9 @@ public sealed class Sandbox
     public const int WriteLimitBytes = 1024 * 1024;
     public const int ListLimitEntries = 200;
 
-    /// <summary>把相对路径解析成沙箱内的绝对路径；越界抛 SandboxViolation。</summary>
+    /// <summary>
+    /// 把相对路径解析成沙箱内的绝对路径；越界抛 SandboxViolation
+    /// </summary>
     public string Resolve(string? relative)
     {
         var clean = (relative ?? "").Replace('\\', '/').Trim();
@@ -50,7 +54,9 @@ public sealed class Sandbox
         return full;
     }
 
-    /// <summary>转成沙箱内的相对路径（用于回显）。</summary>
+    /// <summary>
+    /// 转成沙箱内的相对路径（用于回显）
+    /// </summary>
     public string Relative(string fullPath)
     {
         var rootFull = Path.GetFullPath(Root);

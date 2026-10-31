@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -38,7 +38,9 @@ public sealed class PersonaSaveResult
     public List<string> ChangedSegments { get; set; } = new();
 }
 
-/// <summary>自我（System Prompt.md）。</summary>
+/// <summary>
+/// 自我（System Prompt.md）
+/// </summary>
 public sealed class Persona
 {
     private const int HistoryLimit = 200;
@@ -70,7 +72,6 @@ public sealed class Persona
     private string MetaFile => Path.Combine(_env.PersonaDir, "meta", "system-prompt.json");
     private string HistoryDir(int rev) => Path.Combine(_env.PersonaDir, "history", rev.ToString("D6"));
 
-    // -- 读 ---------------------------------------------------------------
     public PersonaView Read()
     {
         lock (_gate)
@@ -116,7 +117,6 @@ public sealed class Persona
         }
     }
 
-    // -- 写 ---------------------------------------------------------------
     public PersonaSaveResult Save(string md, string by, bool isHuman)
     {
         lock (_gate)
@@ -254,7 +254,6 @@ public sealed class Persona
         }
     }
 
-    // -- 历史 / diff / 回滚 -----------------------------------------------
     public List<object> History()
     {
         var root = Path.Combine(_env.PersonaDir, "history");
@@ -291,7 +290,9 @@ public sealed class Persona
         return File.Exists(file) ? File.ReadAllText(file) : "";
     }
 
-    /// <summary>把内容恢复到某一版（rev 0 = 出厂基线）。恢复到与当前相同的版本是无操作。</summary>
+    /// <summary>
+    /// 把内容恢复到某一版（rev 0 = 出厂基线）。恢复到与当前相同的版本是无操作
+    /// </summary>
     public PersonaSaveResult Rollback(int rev, string by)
     {
         var file = Path.Combine(HistoryDir(rev), "after.md");
@@ -322,7 +323,6 @@ public sealed class Persona
         return Save(content, by, isHuman: true);
     }
 
-    // -- 解析 -------------------------------------------------------------
     public static Dictionary<string, string> ParseSegments(string md)
     {
         var result = new Dictionary<string, string>();
@@ -370,7 +370,6 @@ public sealed class Persona
         return (true, "");
     }
 
-    // -- 内部 -------------------------------------------------------------
     private PersonaMeta LoadMeta()
     {
         PersonaMeta meta;
@@ -423,7 +422,9 @@ public sealed class Persona
         return Convert.ToHexString(bytes)[..8].ToLowerInvariant();
     }
 
-    /// <summary>朴素 LCS 行级 diff。行数过大时退化为整体前后对照。</summary>
+    /// <summary>
+    /// 朴素 LCS 行级 diff。行数过大时退化为整体前后对照
+    /// </summary>
     public static string Diff(string before, string after)
     {
         var a = (before ?? "").Replace("\r\n", "\n").Split('\n');

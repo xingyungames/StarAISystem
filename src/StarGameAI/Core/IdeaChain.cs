@@ -8,20 +8,28 @@ public sealed class IdeaChainVersion
     public int V { get; set; }
     public long Ts { get; set; }
     public List<string> Thoughts { get; set; } = new();
-    /// <summary>这一版落到哪个主题上（短标签），用于判断是不是又在想同一件事。</summary>
+    /// <summary>
+    /// 这一版落到哪个主题上（短标签），用于判断是不是又在想同一件事
+    /// </summary>
     public string Topic { get; set; } = "";
 }
 
 //坑：固定喂同一份材料时，模型每轮都会得出同一个结论
-/// <summary>一个对象的「思想链」：每一轮发散接着上一轮的想法往下走。</summary>
-/// <summary>一件已经了结的事：主题、什么时候了结的、当时说了什么。</summary>
+/// <summary>
+/// 一个对象的「思想链」：每一轮发散接着上一轮的想法往下走
+/// </summary>
+/// <summary>
+/// 一件已经了结的事：主题、什么时候了结的、当时说了什么
+/// </summary>
 public sealed class ResolvedTopic
 {
     public string Topic { get; set; } = "";
     public long Ts { get; set; }
     public string Target { get; set; } = "";
     public string Did { get; set; } = "";
-    /// <summary>是否真的送达了。送达则永久不再提；没送达只是占位，允许冷却后重试。</summary>
+    /// <summary>
+    /// 是否真的送达了。送达则永久不再提；没送达只是占位，允许冷却后重试
+    /// </summary>
     public bool Delivered { get; set; }
 }
 
@@ -33,12 +41,18 @@ public sealed class IdeaChain
     public List<string> Thoughts { get; set; } = new();
     public string Thought { get; set; } = "";
     public string Topic { get; set; } = "";
-    /// <summary>最近几版的主题标签（旧 → 新，最多 6 个）。用来判断"是不是又在想同一件事"。</summary>
+    /// <summary>
+    /// 最近几版的主题标签（旧 → 新，最多 6 个）。用来判断"是不是又在想同一件事"
+    /// </summary>
     public List<string> Topics { get; set; } = new();
-    /// <summary>上次消费到的输入水位（排除自己说的话）。没有新消息就不再想一遍。</summary>
+    /// <summary>
+    /// 上次消费到的输入水位（排除自己说的话）。没有新消息就不再想一遍
+    /// </summary>
     public long LastInputTs { get; set; }
     public List<IdeaChainVersion> History { get; set; } = new();
-    /// <summary>已经了结的事。了结之后不再主动重提，思绪也不再带着它往下滚。</summary>
+    /// <summary>
+    /// 已经了结的事。了结之后不再主动重提，思绪也不再带着它往下滚
+    /// </summary>
     public List<ResolvedTopic> Resolved { get; set; } = new();
 
     /// <summary>
@@ -48,22 +62,32 @@ public sealed class IdeaChain
     public List<HeldTopic> Held { get; set; } = new();
 }
 
-/// <summary>停放中的一件事。</summary>
+/// <summary>
+/// 停放中的一件事
+/// </summary>
 public sealed class HeldTopic
 {
     public string Topic { get; set; } = "";
 
-    /// <summary>什么时候判它做不了的。</summary>
+    /// <summary>
+    /// 什么时候判它做不了的
+    /// </summary>
     public long Ts { get; set; }
 
-    /// <summary>为什么做不了（时机不对 / 会打扰 / 没合适的地方说）。</summary>
+    /// <summary>
+    /// 为什么做不了（时机不对 / 会打扰 / 没合适的地方说）
+    /// </summary>
     public string Why { get; set; } = "";
 
-    /// <summary>到这个时刻之后可以重新拿出来。</summary>
+    /// <summary>
+    /// 到这个时刻之后可以重新拿出来
+    /// </summary>
     public long Until { get; set; }
 }
 
-/// <summary>全局了结表里的一条：这件事在某个落点已经做完了。</summary>
+/// <summary>
+/// 全局了结表里的一条：这件事在某个落点已经做完了
+/// </summary>
 public sealed class DoneTopic
 {
     public string Topic { get; set; } = "";
@@ -71,7 +95,9 @@ public sealed class DoneTopic
     public long Ts { get; set; }
 }
 
-/// <summary>加权意向里的一条「要做的事」。</summary>
+/// <summary>
+/// 加权意向里的一条「要做的事」
+/// </summary>
 public sealed class WeightItem
 {
     public string Id { get; set; } = "";
@@ -82,43 +108,71 @@ public sealed class WeightItem
 }
 
 //坑：权重只加不减会卡心结——顶在 1.00 永远不动，却从不变成动作
-/// <summary>一条「加权意向」：我打算对谁做什么。</summary>
+/// <summary>
+/// 一条「加权意向」：我打算对谁做什么
+/// </summary>
 public sealed class IdeaWeight
 {
     public string Id { get; set; } = "";
-    /// <summary>group / private / poke / file</summary>
+    /// <summary>
+    /// group / private / poke / file
+    /// </summary>
     public string Kind { get; set; } = "group";
-    /// <summary>群号或 QQ 号</summary>
+    /// <summary>
+    /// 群号或 QQ 号
+    /// </summary>
     public string Target { get; set; } = "";
-    /// <summary>对方的名字。**只从联系人目录取，不信模型给的名字**。</summary>
+    /// <summary>
+    /// 对方的名字。**只从联系人目录取，不信模型给的名字**
+    /// </summary>
     public string Who { get; set; } = "";
-    /// <summary>枚举出来的落点说明：在群里发言 / 和某某私聊</summary>
+    /// <summary>
+    /// 枚举出来的落点说明：在群里发言 / 和某某私聊
+    /// </summary>
     public string Title { get; set; } = "";
 
     //坑：只按落点归并时，「梦想」会同时出现在 5 个桶里，每个都被顶到 1.00
-    /// <summary>主题键（≤8 字），如「梦想」「喊困」「关系试探」。</summary>
+    /// <summary>
+    /// 主题键（≤8 字），如「梦想」「喊困」「关系试探」
+    /// </summary>
     public string Topic { get; set; } = "";
 
-    /// <summary>这条意向来自哪一路发散。</summary>
+    /// <summary>
+    /// 这条意向来自哪一路发散
+    /// </summary>
     public string Origin { get; set; } = "context";
 
-    /// <summary>要做的事，一件事一条。</summary>
+    /// <summary>
+    /// 要做的事，一件事一条
+    /// </summary>
     public List<WeightItem> Items { get; set; } = new();
 
-    /// <summary>够重了却一直没被兑现的轮数。</summary>
+    /// <summary>
+    /// 够重了却一直没被兑现的轮数
+    /// </summary>
     public int MatureRounds { get; set; }
 
-    /// <summary>当前权重（已经扣过衰减的**现值**，不是历史峰值）。</summary>
+    /// <summary>
+    /// 当前权重（已经扣过衰减的**现值**，不是历史峰值）
+    /// </summary>
     public double Weight { get; set; }
-    /// <summary>已经做过 / 已经在回复里体现过了。置位的条目会被移出列表。</summary>
+    /// <summary>
+    /// 已经做过 / 已经在回复里体现过了。置位的条目会被移出列表
+    /// </summary>
     public bool Done { get; set; }
     public long CreatedAt { get; set; }
-    /// <summary>最后一次加权或扣衰减的时间点（衰减的锚）。</summary>
+    /// <summary>
+    /// 最后一次加权或扣衰减的时间点（衰减的锚）
+    /// </summary>
     public long UpdatedAt { get; set; }
-    /// <summary>被加权过几次。</summary>
+    /// <summary>
+    /// 被加权过几次
+    /// </summary>
     public int Reinforced { get; set; }
 
-    /// <summary>落点标题：只由 Kind + Who + Target 推出来，不给模型自由发挥的空间。</summary>
+    /// <summary>
+    /// 落点标题：只由 Kind + Who + Target 推出来，不给模型自由发挥的空间
+    /// </summary>
     public static string TitleOf(string kind, string who, string target)
     {
         var k = (kind ?? "").Trim().ToLowerInvariant();
@@ -140,7 +194,9 @@ public sealed class IdeaWeight
         return "在群里发言" + groupTag;
     }
 
-    /// <summary>带主题的标题：和星涵私聊·梦想 / 在群里发言·100001·喊困。</summary>
+    /// <summary>
+    /// 带主题的标题：和星涵私聊·梦想 / 在群里发言·100001·喊困
+    /// </summary>
     public static string TitleWithTopic(string kind, string who, string target, string topic)
     {
         var baseTitle = TitleOf(kind, who, target);
@@ -148,11 +204,15 @@ public sealed class IdeaWeight
         return t.Length == 0 ? baseTitle : baseTitle + "·" + t;
     }
 
-    /// <summary>累加用的键：落在同一个地方、同一个主题的意向合成一条。</summary>
+    /// <summary>
+    /// 累加用的键：落在同一个地方、同一个主题的意向合成一条
+    /// </summary>
     public static string KeyOf(string kind, string target) =>
         (kind ?? "").Trim().ToLowerInvariant() + "|" + (target ?? "").Trim();
 
-    /// <summary>带主题的键。<c>(实体, 主题)</c> 才是真正的归并单位。</summary>
+    /// <summary>
+    /// 带主题的键。<c>(实体, 主题)</c> 才是真正的归并单位
+    /// </summary>
     public static string KeyOf(string kind, string target, string topic)
     {
         var b = KeyOf(kind, target);
@@ -160,7 +220,9 @@ public sealed class IdeaWeight
         return t.Length == 0 ? b : b + "|" + t;
     }
 
-    /// <summary>落盘/内存里用的键。</summary>
+    /// <summary>
+    /// 落盘/内存里用的键
+    /// </summary>
     public static string StoreKey(IdeaWeight w) =>
         (w.Target ?? "").Trim().Length > 0
             ? IdeaWeight.KeyOf(w.Kind ?? "", w.Target ?? "", w.Topic ?? "")
@@ -169,7 +231,9 @@ public sealed class IdeaWeight
     public static string FirstText(IdeaWeight w) =>
         w.Items.Count > 0 ? w.Items[0].Text : "";
 
-    /// <summary>把老格式里被「；」缝起来的流水句拆成一件事一条。</summary>
+    /// <summary>
+    /// 把老格式里被「；」缝起来的流水句拆成一件事一条
+    /// </summary>
     public static List<string> SplitLegacyBody(string body)
     {
         var result = new List<string>();
@@ -192,12 +256,16 @@ public sealed class IdeaWeight
         return result;
     }
 
-    /// <summary>整桶的展示文本（后台/日志用）。</summary>
+    /// <summary>
+    /// 整桶的展示文本（后台/日志用）
+    /// </summary>
     public string Summary() =>
         Items.Count == 0 ? "" : string.Join("；", Items.Select(i => i.Text));
 }
 
-/// <summary>思想链与「加权意向」的存储。</summary>
+/// <summary>
+/// 思想链与「加权意向」的存储
+/// </summary>
 public sealed class IdeaChainStore
 {
     private readonly Env _env;
@@ -245,7 +313,9 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>清掉正在带的念头，让下一轮从空白开始想。target 为空就清全部。</summary>
+    /// <summary>
+    /// 清掉正在带的念头，让下一轮从空白开始想。target 为空就清全部
+    /// </summary>
     public List<string> ResetCarry(string target)
     {
         var done = new List<string>();
@@ -288,7 +358,9 @@ public sealed class IdeaChainStore
         return done;
     }
 
-    /// <summary>清掉一条链正在带的念头。真的清到了返回 true。</summary>
+    /// <summary>
+    /// 清掉一条链正在带的念头。真的清到了返回 true
+    /// </summary>
     private static bool Clear(IdeaChain chain)
     {
         chain.Thoughts ??= new List<string>();
@@ -310,9 +382,10 @@ public sealed class IdeaChainStore
         return true;
     }
 
-    // -- 停放 ---------------------------------------------------------
 
-    /// <summary>把一件事停下来：现在做不了，压着，到期再说。</summary>
+    /// <summary>
+    /// 把一件事停下来：现在做不了，压着，到期再说
+    /// </summary>
     public void Hold(IdeaChain chain, string topic, string why, int minutes)
     {
         var t = (topic ?? "").Trim();
@@ -354,7 +427,9 @@ public sealed class IdeaChainStore
         Save(chain);
     }
 
-    /// <summary>这件事现在还在停放期里吗（顺带清掉过期的）。</summary>
+    /// <summary>
+    /// 这件事现在还在停放期里吗（顺带清掉过期的）
+    /// </summary>
     public bool IsHeld(IdeaChain chain, string topic)
     {
         var t = (topic ?? "").Trim();
@@ -366,7 +441,9 @@ public sealed class IdeaChainStore
         return chain.Held.Any(h => SameTopic(h.Topic, t));
     }
 
-    /// <summary>还在停放期里的事（给上下文展示与过滤用）。</summary>
+    /// <summary>
+    /// 还在停放期里的事（给上下文展示与过滤用）
+    /// </summary>
     public List<string> HeldTopics(IdeaChain chain)
     {
         if (chain.Held is null || chain.Held.Count == 0) return new List<string>();
@@ -376,7 +453,6 @@ public sealed class IdeaChainStore
         return chain.Held.Select(h => h.Topic).ToList();
     }
 
-    // -- 全局了结表 ---------------------------------------------------
 
     private string DoneFile => Path.Combine(_env.IdeaDir, "done.json");
 
@@ -398,7 +474,9 @@ public sealed class IdeaChainStore
         catch { return new List<DoneTopic>(); }
     }
 
-    /// <summary>记一件事已经做完（全局，跨落点生效）。</summary>
+    /// <summary>
+    /// 记一件事已经做完（全局，跨落点生效）
+    /// </summary>
     public void AddDone(string topic, string target)
     {
         var t = (topic ?? "").Trim();
@@ -429,7 +507,9 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>这件事是不是已经在别处做完了。</summary>
+    /// <summary>
+    /// 这件事是不是已经在别处做完了
+    /// </summary>
     public bool DoneBefore(string topic)
     {
         var t = (topic ?? "").Trim();
@@ -437,7 +517,9 @@ public sealed class IdeaChainStore
         return LoadDone().Any(d => SameTopic(d.Topic, t));
     }
 
-    /// <summary>清空全局了结表。清完这些事就又能被重新想起来——只在确实要重来时用。</summary>
+    /// <summary>
+    /// 清空全局了结表。清完这些事就又能被重新想起来——只在确实要重来时用
+    /// </summary>
     public int ClearDone()
     {
         lock (_lock)
@@ -452,7 +534,9 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>两个主题标签是不是同一件事。</summary>
+    /// <summary>
+    /// 两个主题标签是不是同一件事
+    /// </summary>
     public static bool SameTopic(string a, string b)
     {
         var na = TextSim.Normalize(a);
@@ -462,16 +546,16 @@ public sealed class IdeaChainStore
         if (na.Contains(nb, StringComparison.Ordinal) || nb.Contains(na, StringComparison.Ordinal)) return true;
         if (TextSim.Similarity(na, nb) >= 0.5) return true;
 
-        // 主题标签很短，几乎每个二元组都是关键词，所以「包含度」比「相似度」更抗改写。
+        // 主题标签短，几乎每个二元组都是关键词，包含度比相似度抗改写
         //
-        // 实盘:梦想那件事被拆成四个桶——欠星涵的梦想答案 / 没答的梦想 / 梦想答案空着 /
-        // 梦想那题没答。两两算 Jaccard 只有 0.2~0.3，一个都并不上；
-        // 但按「短的那边有多少被长的那边盖住」算，其中三对都到 0.5 以上，
-        // 连起来就是一个簇，四个桶归成一个。
+        // 同一件事的四种说法两两 Jaccard 只有 0.2 上下，
+        // 按包含度算有三对越过 0.5，连起来就是一个簇
         return Containment(na, nb) >= 0.5;
     }
 
-    /// <summary>短的那串二元组有多少比例出现在长的那串里。</summary>
+    /// <summary>
+    /// 短的那串二元组有多少比例出现在长的那串里
+    /// </summary>
     private static double Containment(string a, string b)
     {
         var (shorter, longer) = a.Length <= b.Length ? (a, b) : (b, a);
@@ -538,7 +622,9 @@ public sealed class IdeaChainStore
         return merged;
     }
 
-    /// <summary>按主题名分组归并（模型给出同义分组之后调用）。</summary>
+    /// <summary>
+    /// 按主题名分组归并（模型给出同义分组之后调用）
+    /// </summary>
     public int MergeGroups(IEnumerable<IEnumerable<string>> groups)
     {
         var all = LoadWeights();
@@ -597,9 +683,10 @@ public sealed class IdeaChainStore
         return rest.Count;
     }
 
-    // -- 加权意向 -----------------------------------------------------
 
-    /// <summary>读出所有加权意向，并**在这一步扣掉衰减、清掉遗忘的**。</summary>
+    /// <summary>
+    /// 读出所有加权意向，并**在这一步扣掉衰减、清掉遗忘的**
+    /// </summary>
     public Dictionary<string, IdeaWeight> LoadWeights()
     {
         try
@@ -741,7 +828,9 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>还活着、还没做的加权意向（按权重降序）。</summary>
+    /// <summary>
+    /// 还活着、还没做的加权意向（按权重降序）
+    /// </summary>
     public List<IdeaWeight> PendingWeights(int max = 8) =>
         LoadWeights().Values
             .Where(w => !w.Done && w.Weight > 0.05)
@@ -749,7 +838,9 @@ public sealed class IdeaChainStore
             .Take(max)
             .ToList();
 
-    /// <summary>够重但一直没做的意向（权重 ≥ act_threshold）。</summary>
+    /// <summary>
+    /// 够重但一直没做的意向（权重 ≥ act_threshold）
+    /// </summary>
     public List<IdeaWeight> MatureWeights(int max = 3)
     {
         var threshold = Math.Clamp(_env.Idea.Weight.ActThreshold, 0.3, 1.0);
@@ -761,7 +852,9 @@ public sealed class IdeaChainStore
             .ToList();
     }
 
-    /// <summary>加权。返回 null 表示**拒绝**——桶已经够重了。</summary>
+    /// <summary>
+    /// 加权。返回 null 表示**拒绝**——桶已经够重了
+    /// </summary>
     public (IdeaWeight? weight, bool rejected) Boost(string kind, string target, string who,
         string topic, string origin, IEnumerable<string> newItems, double amount)
     {
@@ -786,12 +879,10 @@ public sealed class IdeaChainStore
                 if (hit.Weight >= cap)
                     return (hit, true);   // 够重了，别再惦记
 
-                // ---- 内容没变就不加权
+                // 内容没变就不加权
                 //
-                // 实盘的问题：每 5 分钟都会把同一批话重新"确认"一遍，内容一个字没变，
-                // 权重却一路加。而且**每加一次就重置衰减锚点**，于是权重在 0.95~1.0
-                // 之间永久锯齿，衰减永远追不上。
-                // 现在只有真的新增了事项才加权重、才刷新时间。
+                // 重复确认同一批话会把衰减锚点一直刷新，权重在 0.95~1.0 之间永久锯齿
+                // 只有真新增了事项才加权重、才刷新时间
                 var beforeCount = hit.Items.Count;
                 MergeItems(hit, newItems);
                 var changed = hit.Items.Count > beforeCount;
@@ -835,7 +926,9 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>增删事项：一句话一件事，同一桶里不重复。</summary>
+    /// <summary>
+    /// 增删事项：一句话一件事，同一桶里不重复
+    /// </summary>
     public static void MergeItems(IdeaWeight bucket, IEnumerable<string> texts)
     {
         var max = 6;
@@ -864,7 +957,9 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>消费掉一条意向：标记完成并**移出列表**。</summary>
+    /// <summary>
+    /// 消费掉一条意向：标记完成并**移出列表**
+    /// </summary>
     public bool Consume(string id, string by)
     {
         var all = LoadWeights();
@@ -877,7 +972,9 @@ public sealed class IdeaChainStore
         return true;
     }
 
-    /// <summary>按落点消费整桶（act 成功发出时用）。返回消费掉了几个桶。</summary>
+    /// <summary>
+    /// 按落点消费整桶（act 成功发出时用）。返回消费掉了几个桶
+    /// </summary>
     public int ConsumeByTarget(string kind, string target)
     {
         var all = LoadWeights();
@@ -904,7 +1001,9 @@ public sealed class IdeaChainStore
         return hits.Count;
     }
 
-    /// <summary>删掉一条。</summary>
+    /// <summary>
+    /// 删掉一条
+    /// </summary>
     public bool SetOrigin(string id, string origin)
     {
         var want = origin == "self" ? "self" : "context";
@@ -932,7 +1031,9 @@ public sealed class IdeaChainStore
         return true;
     }
 
-    /// <summary>老数据清账：把没有落点（target 为空）的条目合并成一条，合不动的丢弃。</summary>
+    /// <summary>
+    /// 老数据清账：把没有落点（target 为空）的条目合并成一条，合不动的丢弃
+    /// </summary>
     public int CleanupLegacy()
     {
         var all = LoadWeights();
@@ -963,7 +1064,9 @@ public sealed class IdeaChainStore
         return legacy.Count;
     }
 
-    /// <summary>用联系人目录校正每个桶的 <c>Who</c>。</summary>
+    /// <summary>
+    /// 用联系人目录校正每个桶的 <c>Who</c>
+    /// </summary>
     public int FixWho(Func<string, string> resolveName)
     {
         var all = LoadWeights();
@@ -985,7 +1088,9 @@ public sealed class IdeaChainStore
         return fixedCount;
     }
 
-    /// <summary>一轮想完之后调用：给"够重但没被兑现"的桶加一次计数。</summary>
+    /// <summary>
+    /// 一轮想完之后调用：给"够重但没被兑现"的桶加一次计数
+    /// </summary>
     public void NoteUnfulfilled()
     {
         var cap = Math.Clamp(_env.Idea.Weight.ActThreshold, 0.3, 1.0);
@@ -1006,6 +1111,8 @@ public sealed class IdeaChainStore
         }
     }
 
-    /// <summary>权重最高且还新鲜的几条，喂给下一轮发散。</summary>
+    /// <summary>
+    /// 权重最高且还新鲜的几条，喂给下一轮发散
+    /// </summary>
     public List<IdeaWeight> TopWeights(int max = 5) => PendingWeights(max);
 }

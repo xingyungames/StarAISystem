@@ -1,11 +1,15 @@
-﻿using System.Text;
+using System.Text;
 
 namespace StarGameAI.Core;
 
-/// <summary>文本相似度工具。全系统只有这一份实现，</summary>
+/// <summary>
+/// 文本相似度工具。全系统只有这一份实现
+/// </summary>
 public static class TextSim
 {
-    /// <summary>只保留字母与汉字并转小写，去掉标点噪声。</summary>
+    /// <summary>
+    /// 只保留字母与汉字并转小写，去掉标点噪声
+    /// </summary>
     public static string Normalize(string text)
     {
         var sb = new StringBuilder();
@@ -23,7 +27,9 @@ public static class TextSim
         return set;
     }
 
-    /// <summary>0~1 的相似度。1 表示去掉标点后完全相同，0 表示毫无共同二元组。</summary>
+    /// <summary>
+    /// 0~1 的相似度。1 表示去掉标点后完全相同，0 表示毫无共同二元组
+    /// </summary>
     public static double Similarity(string a, string b)
     {
         var na = Normalize(a);
@@ -41,7 +47,9 @@ public static class TextSim
         return union > 0 ? (double)inter / union : 0;
     }
 
-    /// <summary>行级增删统计，用于衡量改写幅度。</summary>
+    /// <summary>
+    /// 行级增删统计，用于衡量改写幅度
+    /// </summary>
     public static (int added, int removed) LineDelta(string before, string after)
     {
         var a = (before ?? "").Replace("\r\n", "\n").Split('\n')

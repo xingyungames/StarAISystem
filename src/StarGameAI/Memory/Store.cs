@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
 
@@ -9,22 +9,32 @@ public sealed class MemEntry
     public string Id { get; set; } = "";
     public long Ts { get; set; }
     public string Scope { get; set; } = "";
-    /// <summary>identity / fact / preference / event / quote / capability / commitment</summary>
+    /// <summary>
+    /// identity / fact / preference / event / quote / capability / commitment
+    /// </summary>
     public string Kind { get; set; } = "fact";
     public string Text { get; set; } = "";
     public List<string> Tags { get; set; } = new();
 
-    /// <summary>约定的生效范围（只对 kind=commitment 有意义）。</summary>
+    /// <summary>
+    /// 约定的生效范围（只对 kind=commitment 有意义）
+    /// </summary>
     public List<string> ValidIn { get; set; } = new();
 
-    /// <summary>hard = 越界就是错；soft = 尽量别。只有 commitment 用。</summary>
+    /// <summary>
+    /// hard = 越界就是错；soft = 尽量别。只有 commitment 用
+    /// </summary>
     public string Strictness { get; set; } = "";
 
-    /// <summary>约定失效时间（0 = 不失效）。</summary>
+    /// <summary>
+    /// 约定失效时间（0 = 不失效）
+    /// </summary>
     public long ExpiresAt { get; set; }
 
     public int Weight { get; set; } = 50;
-    /// <summary>public / member / private</summary>
+    /// <summary>
+    /// public / member / private
+    /// </summary>
     public string Level { get; set; } = "private";
     public bool Pinned { get; set; }
     public bool Tombstone { get; set; }
@@ -33,23 +43,31 @@ public sealed class MemEntry
     public int Reinforced { get; set; } = 1;
     public string UserId { get; set; } = "";
     public string UserName { get; set; } = "";
-    /// <summary>是否已被深层画像吸收。已吸收的碎片不再参与注入，只留作溯源。</summary>
+    /// <summary>
+    /// 是否已被深层画像吸收。已吸收的碎片不再参与注入，只留作溯源
+    /// </summary>
     public bool Absorbed { get; set; }
     public long AbsorbedAt { get; set; }
 }
 
-/// <summary>群体里反复出现的行为模式。这是「事件画像」的结构化部分，供发言门快速匹配。</summary>
+/// <summary>
+/// 群体里反复出现的行为模式。这是「事件画像」的结构化部分，供发言门快速匹配
+/// </summary>
 public sealed class GroupPattern
 {
     public string Id { get; set; } = "";
     public string Kind { get; set; } = "meme";
     public string Text { get; set; } = "";
-    /// <summary>targeted 时的目标 QQ。</summary>
+    /// <summary>
+    /// targeted 时的目标 QQ
+    /// </summary>
     public string Target { get; set; } = "";
     public int Count { get; set; } = 1;
     public long FirstSeen { get; set; }
     public long LastSeen { get; set; }
-    /// <summary>0~1，由出现次数与时间衰减共同决定。</summary>
+    /// <summary>
+    /// 0~1，由出现次数与时间衰减共同决定
+    /// </summary>
     public double Weight { get; set; } = 0.5;
 }
 
@@ -60,7 +78,9 @@ public sealed class GroupPatternSet
     public List<GroupPattern> Patterns { get; set; } = new();
 }
 
-/// <summary>单一真相：记忆条目按 scope 分文件、只追加。</summary>
+/// <summary>
+/// 单一真相：记忆条目按 scope 分文件、只追加
+/// </summary>
 public sealed class Store
 {
     private static readonly UTF8Encoding Utf8 = new(false);
@@ -94,7 +114,9 @@ public sealed class Store
             .ToList();
     }
 
-    /// <summary>把旧的 entries/ 目录迁到 shallow/（一次性）。</summary>
+    /// <summary>
+    /// 把旧的 entries/ 目录迁到 shallow/（一次性）
+    /// </summary>
     public int MigrateLegacyEntries()
     {
         var legacy = Path.Combine(_env.MemoryDir, "entries");
@@ -152,7 +174,9 @@ public sealed class Store
         return list;
     }
 
-    /// <summary>读这个场景的**归档**记忆（过保留期后被搬走的老条目）。</summary>
+    /// <summary>
+    /// 读这个场景的**归档**记忆（过保留期后被搬走的老条目）
+    /// </summary>
     public List<MemEntry> ReadArchive(string scope)
     {
         var path = Path.Combine(_env.ArchiveDir, SafeName(scope) + ".jsonl");
@@ -195,7 +219,9 @@ public sealed class Store
         return entry;
     }
 
-    /// <summary>行内修改：整文件重写（原子替换）。pinned 与 tombstone 的边界由调用方把关。</summary>
+    /// <summary>
+    /// 行内修改：整文件重写（原子替换）。pinned 与 tombstone 的边界由调用方把关
+    /// </summary>
     public bool Patch(string scope, string id, Action<MemEntry> mutate)
     {
         lock (_gate)
@@ -229,7 +255,9 @@ public sealed class Store
         }
     }
 
-    /// <summary>物理删除（仅后台显式调用；常规删除走 Patch 置 tombstone）。</summary>
+    /// <summary>
+    /// 物理删除（仅后台显式调用；常规删除走 Patch 置 tombstone）
+    /// </summary>
     public bool Remove(string scope, string id)
     {
         lock (_gate)
@@ -269,7 +297,6 @@ public sealed class Store
         return result;
     }
 
-    // -- 深层：人物画像（面向人，跨会话） -------------------------------
     public string ProfileFile(string userId) =>
         Path.Combine(_env.DeepPersonDir, SafeName(userId) + ".md");
 
@@ -294,7 +321,6 @@ public sealed class Store
             .ToList();
     }
 
-    // -- 深层：事件画像（面向群，会过期） -------------------------------
     public string GroupProfileFile(string groupId) =>
         Path.Combine(_env.DeepGroupDir, SafeName(groupId) + ".md");
 
@@ -335,7 +361,9 @@ public sealed class Store
             JsonSerializer.Serialize(set, AppJson.Config));
     }
 
-    /// <summary>重新计算权重并淘汰过期 pattern。这就是「事件会过期」的执行点。</summary>
+    /// <summary>
+    /// 重新计算权重并淘汰过期 pattern。这就是「事件会过期」的执行点
+    /// </summary>
     public void RecomputePatterns(GroupPatternSet set)
     {
         var pol = _env.Memory;
@@ -374,7 +402,9 @@ public sealed class Store
             .ToList();
     }
 
-    /// <summary>把已吸收且超过保留期的浅层碎片移进 archive/，让浅层保持「短期」。</summary>
+    /// <summary>
+    /// 把已吸收且超过保留期的浅层碎片移进 archive/，让浅层保持「短期」
+    /// </summary>
     public int ArchiveExpiredShallow()
     {
         var days = Math.Max(1, _env.Memory.ShallowRetentionDays);
@@ -426,7 +456,9 @@ public sealed class Store
         return moved;
     }
 
-    /// <summary>批量把若干条浅层碎片标记为「已吸收」，只重写一次文件。</summary>
+    /// <summary>
+    /// 批量把若干条浅层碎片标记为「已吸收」，只重写一次文件
+    /// </summary>
     public int MarkAbsorbed(string scope, IReadOnlyCollection<string> ids)
     {
         if (ids.Count == 0) return 0;

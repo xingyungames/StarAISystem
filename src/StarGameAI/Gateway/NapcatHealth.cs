@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -6,7 +6,9 @@ using StarGameAI.Core;
 
 namespace StarGameAI.Gateway;
 
-/// <summary>NapCat 在线状态探测。</summary>
+/// <summary>
+/// NapCat 在线状态探测
+/// </summary>
 public sealed class NapcatHealth : BackgroundService
 {
     private static readonly HttpClient Http = new(new SocketsHttpHandler

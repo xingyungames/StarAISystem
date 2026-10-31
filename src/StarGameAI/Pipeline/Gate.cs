@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
 using StarGameAI.Gateway;
@@ -17,17 +17,25 @@ public sealed class GateDecision
     public string Mode { get; set; } = "skip";
     public bool NeedThink { get; set; }
     public bool UsedLlm { get; set; }
-    /// <summary>模型判定：这句话是不是在跟我说话（不是靠名字/问句词表猜的）。</summary>
+    /// <summary>
+    /// 模型判定：这句话是不是在跟我说话（不是靠名字/问句词表猜的）
+    /// </summary>
     public bool Addressed { get; set; }
-    /// <summary>命中群体模式带来的加分。</summary>
+    /// <summary>
+    /// 命中群体模式带来的加分
+    /// </summary>
     public double EventBoost { get; set; }
     public List<string> MatchedPatterns { get; set; } = new();
-    /// <summary>结果是被哪一层决定的：rule / cooldown / budget / noise / sample / llm / threshold</summary>
+    /// <summary>
+    /// 结果是被哪一层决定的：rule / cooldown / budget / noise / sample / llm / threshold
+    /// </summary>
     public string Stage { get; set; } = "";
     public int Threshold { get; set; }
 }
 
-/// <summary>发言门：先零成本规则筛，再花一次小请求问模型要不要开口。</summary>
+/// <summary>
+/// 发言门：先零成本规则筛，再花一次小请求问模型要不要开口
+/// </summary>
 public sealed class Gate
 {
     private sealed class ScopeState
@@ -103,7 +111,9 @@ public sealed class Gate
         return EvaluateAsync(msg.Scope, msg.Text, msg.MessageId, speaker, addressed, msg.IsPrivate, dry: false, ct);
     }
 
-    /// <summary>沙盒：只算不落地，用于后台调阈值。</summary>
+    /// <summary>
+    /// 沙盒：只算不落地，用于后台调阈值
+    /// </summary>
     public Task<GateDecision> SimulateAsync(string scope, string text, string speaker, bool addressed, CancellationToken ct)
     {
         var isPrivate = scope.StartsWith("private:", StringComparison.Ordinal);
@@ -138,11 +148,10 @@ public sealed class Gate
             };
         }
 
-        // 连字都没有的消息（纯表情 / 纯图片 / 空）没有判断价值。
+        // 连字都没有的消息没有判断价值
         //
-        // 注意这里**不再**用噪声词表。原来是「抹掉噪声词后剩不下两个字就算灌水」，
-        // 结果把「星璃」这种两字点名判成了灌水（实盘就是这样：直接叫名字被静默）。
-        // 现在只问一件事：这条消息里有没有可判断的文字。
+        // 不要再加噪声词表：抹掉噪声词再数字数，会把「星璃」这种两字点名判成灌水
+        // 只问一件事，这条消息里有没有可判断的文字
         if (!HasJudgableText(text))
             return Skip("没有可判断的内容", "纯表情或空消息", "noise", cfg);
 
@@ -244,11 +253,9 @@ public sealed class Gate
         }
         catch (LlmException ex)
         {
-            // 判定失败时默认**不说话**。
+            // 判定失败时默认不说话
             //
-            // 原来是保守放行（Speak=true），但那是按"宁可多说"设计的；
-            // 实盘下来代价反了：主动插嘴说错话，比沉默一次糟得多。
-            // 判不成就当没动机，等下一句再说。
+            // 主动插嘴说错话，比沉默一次糟得多
             _log.LogInformation("意愿判定失败，按静默处理：{Error}", ex.Message);
 
             if (cfg.FailOpenOnError)
@@ -282,7 +289,9 @@ public sealed class Gate
         };
 
 
-    /// <summary>命中群体模式时的加分。</summary>
+    /// <summary>
+    /// 命中群体模式时的加分
+    /// </summary>
     private (double boost, List<string> matched) ComputeEventBoost(string scope, string text)
     {
         var eb = _env.Gate.EventBoost;
@@ -336,7 +345,9 @@ public sealed class Gate
         };
     }
 
-    /// <summary>全局配置 + 该群的覆盖值。</summary>
+    /// <summary>
+    /// 全局配置 + 该群的覆盖值
+    /// </summary>
     public GateConfig Effective(string scope)
     {
         var cfg = _env.Gate;
@@ -380,7 +391,9 @@ public sealed class Gate
         }
     }
 
-    /// <summary>这条消息里有没有"可判断的内容"。</summary>
+    /// <summary>
+    /// 这条消息里有没有"可判断的内容"
+    /// </summary>
     private static bool HasJudgableText(string text)
     {
         var body = text ?? "";
@@ -404,7 +417,9 @@ public sealed class Gate
         return false;
     }
 
-    /// <summary>我是谁。</summary>
+    /// <summary>
+    /// 我是谁
+    /// </summary>
     private (string names, string identity) WhoAmI(GateConfig cfg)
     {
         var names = cfg.BotNames
@@ -440,10 +455,14 @@ public sealed class Gate
         return (string.Join("／", names), identity);
     }
 
-    /// <summary>判定模型看到的「我是谁」原文。给后台展示用——这是那一层的地基，</summary>
+    /// <summary>
+    /// 判定模型看到的「我是谁」原文。给后台展示用——这是那一层的地基
+    /// </summary>
     public string SelfDescription() => SelfDescribe(_env.Gate);
 
-    /// <summary>判定模型看到的「我是谁」的一段。</summary>
+    /// <summary>
+    /// 判定模型看到的「我是谁」的一段
+    /// </summary>
     private string SelfDescribe(GateConfig cfg)
     {
         var (names, identity) = WhoAmI(cfg);
@@ -461,7 +480,9 @@ public sealed class Gate
         return sb.ToString();
     }
 
-    /// <summary>这条消息是不是 @ 了别人。</summary>
+    /// <summary>
+    /// 这条消息是不是 @ 了别人
+    /// </summary>
     private string AtOthersNote(string text, GateConfig cfg)
     {
         var body = text ?? "";

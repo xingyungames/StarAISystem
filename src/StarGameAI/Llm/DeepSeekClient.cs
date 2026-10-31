@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -70,7 +70,9 @@ public sealed class LlmException : Exception
 
 
 //坑：V4 默认开思考模式，思考 token 计入 max_tokens，会出现 200 但 content 为空
-/// <summary>DeepSeek（OpenAI 兼容 /chat/completions）客户端。</summary>
+/// <summary>
+/// DeepSeek（OpenAI 兼容 /chat/completions）客户端
+/// </summary>
 public sealed class DeepSeekClient
 {
     private static readonly HttpClient Http = CreateHttp();
@@ -260,7 +262,9 @@ public sealed class DeepSeekClient
 
     private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n];
 
-    /// <summary>日志与异常里不出现完整密钥。</summary>
+    /// <summary>
+    /// 日志与异常里不出现完整密钥
+    /// </summary>
     private static string Sanitize(string s) =>
         System.Text.RegularExpressions.Regex.Replace(s, "sk-[0-9a-zA-Z]{8,}", "sk-***");
 

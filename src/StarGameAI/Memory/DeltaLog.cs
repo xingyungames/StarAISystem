@@ -1,29 +1,39 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
 
 namespace StarGameAI.Memory;
 
-/// <summary>一次「自我被改写」的事件记录。</summary>
+/// <summary>
+/// 一次「自我被改写」的事件记录
+/// </summary>
 public sealed class DeltaRecord
 {
     public long Ts { get; set; }
-    /// <summary>persona（人设段）/ person（人物画像）/ group（事件画像）/ memory（碎片入库）</summary>
+    /// <summary>
+    /// persona（人设段）/ person（人物画像）/ group（事件画像）/ memory（碎片入库）
+    /// </summary>
     public string Kind { get; set; } = "";
     public string Target { get; set; } = "";
     public string By { get; set; } = "";
-    /// <summary>改写前后的文本相似度，1 = 完全没变。变化率 = 1 - Similarity。</summary>
+    /// <summary>
+    /// 改写前后的文本相似度，1 = 完全没变。变化率 = 1 - Similarity
+    /// </summary>
     public double Similarity { get; set; } = 1;
     public int BeforeChars { get; set; }
     public int AfterChars { get; set; }
     public int AddedLines { get; set; }
     public int RemovedLines { get; set; }
-    /// <summary>本次吸收掉的浅层碎片条数。</summary>
+    /// <summary>
+    /// 本次吸收掉的浅层碎片条数
+    /// </summary>
     public int Absorbed { get; set; }
     public string Note { get; set; } = "";
 }
 
-/// <summary>自我变化度日志。</summary>
+/// <summary>
+/// 自我变化度日志
+/// </summary>
 public sealed class DeltaLog
 {
     private static readonly UTF8Encoding Utf8 = new(false);

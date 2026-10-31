@@ -4,32 +4,48 @@ using StarGameAI.Llm;
 
 namespace StarGameAI.Core;
 
-/// <summary>一个「可以去说的地方」：私聊谁，或者在哪个群说。</summary>
+/// <summary>
+/// 一个「可以去说的地方」：私聊谁，或者在哪个群说
+/// </summary>
 public sealed record RouteSlot(string Channel, string Target, string Label);
 
-/// <summary>动手之前「能不能做、在哪儿做、什么时候做」的判定结果。</summary>
+/// <summary>
+/// 动手之前「能不能做、在哪儿做、什么时候做」的判定结果
+/// </summary>
 public sealed class RouteVerdict
 {
-    /// <summary>现在就能做吗。false 表示这件事要压着。</summary>
+    /// <summary>
+    /// 现在就能做吗。false 表示这件事要压着
+    /// </summary>
     public bool Doable { get; set; }
 
-    /// <summary>private / group / none</summary>
+    /// <summary>
+    /// private / group / none
+    /// </summary>
     public string Channel { get; set; } = "";
 
-    /// <summary>落到哪个号上（QQ 号或群号）。</summary>
+    /// <summary>
+    /// 落到哪个号上（QQ 号或群号）
+    /// </summary>
     public string Target { get; set; } = "";
 
-    /// <summary>now / later</summary>
+    /// <summary>
+    /// now / later
+    /// </summary>
     public string When { get; set; } = "now";
 
-    /// <summary>这一下会不会把人从别的事情里拽出来。</summary>
+    /// <summary>
+    /// 这一下会不会把人从别的事情里拽出来
+    /// </summary>
     public bool Disturb { get; set; }
 
     public string Why { get; set; } = "";
 
     public int Tokens { get; set; }
 
-    /// <summary>模型原始输出，排错用。</summary>
+    /// <summary>
+    /// 模型原始输出，排错用
+    /// </summary>
     public string Raw { get; set; } = "";
 }
 
@@ -51,7 +67,9 @@ public sealed class RouteAgent
         _log = log;
     }
 
-    /// <summary>判一次落点与时机。</summary>
+    /// <summary>
+    /// 判一次落点与时机
+    /// </summary>
     public async Task<RouteVerdict> DecideAsync(
         string action,
         string origin,

@@ -2149,7 +2149,9 @@ public static class AdminApi
     }
 
 
-    /// <summary>请求是不是来自本机。引导端点靠它做安全边界。</summary>
+    /// <summary>
+    /// 请求是不是来自本机。引导端点靠它做安全边界
+    /// </summary>
     private static bool IsLoopback(HttpContext ctx)
     {
         var ip = ctx.Connection.RemoteIpAddress;
@@ -2225,7 +2227,9 @@ public static class AdminApi
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 
-    /// <summary>把补丁**合并**进现有配置，而不是整体替换。</summary>
+    /// <summary>
+    /// 把补丁**合并**进现有配置，而不是整体替换
+    /// </summary>
     private static T MergeConfig<T>(T current, JsonElement patch) where T : class
     {
         var node = JsonSerializer.SerializeToNode(current, AppJson.Config)?.AsObject()

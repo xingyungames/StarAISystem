@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Threading.Channels;
 using StarGameAI.Core;
 using StarGameAI.Pipeline;
@@ -11,7 +11,9 @@ public sealed class Inbound
     public string Trace { get; set; } = "";
 }
 
-/// <summary>OneBot 11 事件接收。</summary>
+/// <summary>
+/// OneBot 11 事件接收
+/// </summary>
 public sealed class Receiver
 {
     private readonly Env _env;
@@ -48,10 +50,14 @@ public sealed class Receiver
 
     public int QueueDepth => Volatile.Read(ref _pending);
 
-    /// <summary>由消费者在处理完一条后调用，仅用于后台展示队列深度。</summary>
+    /// <summary>
+    /// 由消费者在处理完一条后调用，仅用于后台展示队列深度
+    /// </summary>
     public void OnDequeued() => Interlocked.Decrement(ref _pending);
 
-    /// <summary>NapCat 的 HTTP 上报**不發 Authorization**，而是带两个头：</summary>
+    /// <summary>
+    /// NapCat 的 HTTP 上报**不發 Authorization**，而是带两个头：
+    /// </summary>
     public bool CheckAuth(IHeaderDictionary headers, byte[] body)
     {
         var expected = _env.Secrets.Report.Token;
@@ -83,7 +89,9 @@ public sealed class Receiver
         return false;
     }
 
-    /// <summary>返回 null 表示已接受；返回字符串表示应当以该原因拒绝/忽略。</summary>
+    /// <summary>
+    /// 返回 null 表示已接受；返回字符串表示应当以该原因拒绝/忽略
+    /// </summary>
     public string? Handle(string body)
     {
         OneBotPayload? payload;
@@ -225,7 +233,9 @@ public sealed class Receiver
     }
 }
 
-/// <summary>队列消费者：真正干活的地方，串行避免同会话并发抢发。</summary>
+/// <summary>
+/// 队列消费者：真正干活的地方，串行避免同会话并发抢发
+/// </summary>
 public sealed class InboundWorker : BackgroundService
 {
     private readonly Receiver _receiver;

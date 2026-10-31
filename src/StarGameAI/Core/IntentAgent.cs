@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Llm;
 using StarGameAI.Memory;
@@ -6,16 +6,24 @@ using StarGameAI.Pipeline;
 
 namespace StarGameAI.Core;
 
-/// <summary>意图子 AI 的产出：此刻到底有没有一个具体的开口动机。</summary>
+/// <summary>
+/// 意图子 AI 的产出：此刻到底有没有一个具体的开口动机
+/// </summary>
 public sealed class SpeakIntent
 {
-    /// <summary>none / answer / ask / care / share / correct</summary>
+    /// <summary>
+    /// none / answer / ask / care / share / correct
+    /// </summary>
     public string Kind { get; set; } = "none";
-    /// <summary>动机落在哪件具体的事上（不是抽象感受）。</summary>
+    /// <summary>
+    /// 动机落在哪件具体的事上（不是抽象感受）
+    /// </summary>
     public string About { get; set; } = "";
     public string Target { get; set; } = "";
     public string Why { get; set; } = "";
-    /// <summary>为什么现在还不该开口（kind=none 时填）。</summary>
+    /// <summary>
+    /// 为什么现在还不该开口（kind=none 时填）
+    /// </summary>
     public string NotYet { get; set; } = "";
     public int Confidence { get; set; }
     public int Tokens { get; set; }
@@ -23,7 +31,9 @@ public sealed class SpeakIntent
     public bool HasIntent => Kind is not "" and not "none" && About.Length > 0;
 }
 
-/// <summary>意图子 AI：发散之前的一道前置判断。</summary>
+/// <summary>
+/// 意图子 AI：发散之前的一道前置判断
+/// </summary>
 public sealed class IntentAgent
 {
     private const string Prompt = """
@@ -113,11 +123,10 @@ public sealed class IntentAgent
             sb.AppendLine().AppendLine("【我手上还有这些一直没做的事（已经在意到顶了）】");
             foreach (var x in mature) sb.Append("- ").AppendLine(x.text);
 
-            // 措辞逐级硬化：惦记越久，越不该再拿"没机会"当借口。
+            // 措辞逐级硬化：惦记越久，越不该再拿没机会当借口
             //
-            // 实盘的问题：够重的意向一直只当"候选动机"，可以被无限拒绝
-            // （连着多轮都是"气氛已收住、没新话要接"），于是心结永远不动。
-            // 所以按未兑现轮数换说法，到最后承认做不到、交给衰减自然散掉。
+            // 够重的意向若一直被当候选动机，就能被无限拒绝，心结永远不动
+            // 按未兑现轮数换说法，到最后承认做不到、交给衰减散掉
             var tier = EscalationTier(matureMaxRounds);
             sb.AppendLine().AppendLine(tier switch
             {
@@ -173,7 +182,9 @@ public sealed class IntentAgent
         }
     }
 
-    /// <summary>措辞阶梯：按"够重但一直没兑现的轮数"返回档位（0~3）。</summary>
+    /// <summary>
+    /// 措辞阶梯：按"够重但一直没兑现的轮数"返回档位（0~3）
+    /// </summary>
     private int EscalationTier(int rounds)
     {
         var cfg = _env.Idea.Weight;
@@ -183,7 +194,9 @@ public sealed class IntentAgent
         return 0;
     }
 
-    /// <summary>这个场景今天最近几条真人说的话。</summary>
+    /// <summary>
+    /// 这个场景今天最近几条真人说的话
+    /// </summary>
     private string Scene(string scope, int window)
     {
         try

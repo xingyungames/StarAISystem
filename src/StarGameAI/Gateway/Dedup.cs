@@ -1,6 +1,8 @@
-﻿namespace StarGameAI.Gateway;
+namespace StarGameAI.Gateway;
 
-/// <summary>message_id 去重。入站（NapCat 上报）与出站（发送后回写）共用同一份表与同一套 id，</summary>
+/// <summary>
+/// message_id 去重。入站（NapCat 上报）与出站（发送后回写）共用同一份表与同一套 id
+/// </summary>
 public sealed class Dedup
 {
     private readonly object _gate = new();
@@ -14,7 +16,9 @@ public sealed class Dedup
         _ttl = ttl;
     }
 
-    /// <summary>首次见到返回 true 并登记；重复返回 false。</summary>
+    /// <summary>
+    /// 首次见到返回 true 并登记；重复返回 false
+    /// </summary>
     public bool TryAdd(string key)
     {
         if (string.IsNullOrEmpty(key)) return true;
@@ -40,7 +44,9 @@ public sealed class Dedup
         }
     }
 
-    /// <summary>发送前预登记，避免「同一条消息正在生成时被重投」。</summary>
+    /// <summary>
+    /// 发送前预登记，避免「同一条消息正在生成时被重投」
+    /// </summary>
     public void Reserve(string key)
     {
         if (string.IsNullOrEmpty(key)) return;

@@ -1,36 +1,54 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace StarGameAI.Core;
 
-/// <summary>一个「上下文边界」——不是一个人，而是**一件事**。</summary>
+/// <summary>
+/// 一个「上下文边界」——不是一个人，而是**一件事**
+/// </summary>
 public sealed class DialogueBlock
 {
     public string Id { get; set; } = "";
     public string Scope { get; set; } = "";
-    /// <summary>one_to_one（一个人在跟我说）/ open_topic（多人在聊一件事，我可以插）/ cold / closed</summary>
+    /// <summary>
+    /// one_to_one（一个人在跟我说）/ open_topic（多人在聊一件事，我可以插）/ cold / closed
+    /// </summary>
     public string State { get; set; } = "open_topic";
-    /// <summary>参与者 entity_id（QQ 号）。引用，不复制画像。</summary>
+    /// <summary>
+    /// 参与者 entity_id（QQ 号）。引用，不复制画像
+    /// </summary>
     public List<string> Participants { get; set; } = new();
-    /// <summary>one_to_one 时"跟我说话的那个人"。</summary>
+    /// <summary>
+    /// one_to_one 时"跟我说话的那个人"
+    /// </summary>
     public string Owner { get; set; } = "";
-    /// <summary>这块里最后一条消息是谁发的。</summary>
+    /// <summary>
+    /// 这块里最后一条消息是谁发的
+    /// </summary>
     public string LastUserId { get; set; } = "";
-    /// <summary>一句话题摘要。</summary>
+    /// <summary>
+    /// 一句话题摘要
+    /// </summary>
     public string Topic { get; set; } = "";
     public long CreatedAt { get; set; }
     public long LastActiveAt { get; set; }
     public int MessageCount { get; set; }
-    /// <summary>这块里最近的消息 id（最多留 60 个，够回溯用）。</summary>
+    /// <summary>
+    /// 这块里最近的消息 id（最多留 60 个，够回溯用）
+    /// </summary>
     public List<string> MessageIds { get; set; } = new();
 }
 
-/// <summary>一个 scope 下的全部块 + 未归属池。</summary>
+/// <summary>
+/// 一个 scope 下的全部块 + 未归属池
+/// </summary>
 public sealed class DialogueScope
 {
     public string Scope { get; set; } = "";
     public long UpdatedAt { get; set; }
     public List<DialogueBlock> Blocks { get; set; } = new();
-    /// <summary>判不了的消息（保留一段时间，供事后回填）。</summary>
+    /// <summary>
+    /// 判不了的消息（保留一段时间，供事后回填）
+    /// </summary>
     public List<UnresolvedMessage> Unresolved { get; set; } = new();
 }
 
@@ -43,26 +61,36 @@ public sealed class UnresolvedMessage
     public string Why { get; set; } = "";
 }
 
-/// <summary>一次路由判定的结果（同时也是一行审计）。</summary>
+/// <summary>
+/// 一次路由判定的结果（同时也是一行审计）
+/// </summary>
 public sealed class RouteResult
 {
     public long Ts { get; set; }
     public string Scope { get; set; } = "";
     public string MessageId { get; set; } = "";
     public string UserId { get; set; } = "";
-    /// <summary>continue / new_block / unresolved</summary>
+    /// <summary>
+    /// continue / new_block / unresolved
+    /// </summary>
     public string Decision { get; set; } = "unresolved";
     public string BlockId { get; set; } = "";
     public double Confidence { get; set; }
-    /// <summary>rule / model / none</summary>
+    /// <summary>
+    /// rule / model / none
+    /// </summary>
     public string By { get; set; } = "none";
     public string Why { get; set; } = "";
-    /// <summary>各候选块的得分，观测用。</summary>
+    /// <summary>
+    /// 各候选块的得分，观测用
+    /// </summary>
     public Dictionary<string, double> Candidates { get; set; } = new();
     public int Ms { get; set; }
 }
 
-/// <summary>块的存取。一个 scope 一份 <c>data/dialogue/&lt;scope&gt;.json</c>。</summary>
+/// <summary>
+/// 块的存取。一个 scope 一份 <c>data/dialogue/&lt;scope&gt;.json</c>
+/// </summary>
 public sealed class DialogueStore
 {
     private readonly Env _env;
@@ -126,7 +154,9 @@ public sealed class DialogueStore
         }
     }
 
-    /// <summary>这条消息落在哪个块里（回流用）。</summary>
+    /// <summary>
+    /// 这条消息落在哪个块里（回流用）
+    /// </summary>
     public static DialogueBlock? FindByMessage(DialogueScope scope, string messageId)
     {
         if (string.IsNullOrEmpty(messageId)) return null;
@@ -138,7 +168,9 @@ public sealed class DialogueStore
         return null;
     }
 
-    /// <summary>所有 scope 的块总览（后台用）。</summary>
+    /// <summary>
+    /// 所有 scope 的块总览（后台用）
+    /// </summary>
     public List<DialogueScope> LoadAll(int max = 12)
     {
         var list = new List<DialogueScope>();

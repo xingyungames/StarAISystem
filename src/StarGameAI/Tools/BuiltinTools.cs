@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using StarGameAI.Core;
 using StarGameAI.Gateway;
@@ -14,7 +14,9 @@ public sealed class ToolCallContext
     public string TraceId { get; init; } = "";
 }
 
-/// <summary>内置工具：C# 直接实现，不走 Python 沙箱。</summary>
+/// <summary>
+/// 内置工具：C# 直接实现，不走 Python 沙箱
+/// </summary>
 public sealed class BuiltinTools
 {
     private readonly Env _env;
@@ -42,7 +44,9 @@ public sealed class BuiltinTools
 
     public IReadOnlyList<ToolDef> Defs { get; }
 
-    /// <summary>判断工具输出算不算失败。</summary>
+    /// <summary>
+    /// 判断工具输出算不算失败
+    /// </summary>
     public static bool LooksFailed(string? output)
     {
         var s = output ?? "";
@@ -287,7 +291,9 @@ public sealed class BuiltinTools
         return $"已戳了 {(who is not null ? who.Name + "（" + userId + "）" : userId)}" + ContactHint(userId);
     }
 
-    /// <summary>按名字/QQ 查人：这是「戳一戳」和「私信」的前置步骤。</summary>
+    /// <summary>
+    /// 按名字/QQ 查人：这是「戳一戳」和「私信」的前置步骤
+    /// </summary>
     private string QqFind(string query)
     {
         var q = (query ?? "").Trim();
@@ -355,7 +361,9 @@ public sealed class BuiltinTools
     }
 
     //坑：NapCat 有的接口返 retcode=0、有的返 200，只看 0 会把成功判成失败
-    /// <summary>调 NapCat 的 action 接口。</summary>
+    /// <summary>
+    /// 调 NapCat 的 action 接口
+    /// </summary>
     private async Task<(bool ok, string detail)> NapcatActionAsync(
         string endpoint, Dictionary<string, object> payload, CancellationToken ct)
     {
@@ -404,7 +412,9 @@ public sealed class BuiltinTools
         }
     }
 
-    /// <summary>主动找某个人之前的在线状态检查。</summary>
+    /// <summary>
+    /// 主动找某个人之前的在线状态检查
+    /// </summary>
     private string PresenceBlock(string userId, ToolCallContext ctx)
     {
         if (userId == ctx.UserId) return "";
@@ -416,7 +426,9 @@ public sealed class BuiltinTools
                + "可以等他上线，或者先把想说的记下来。";
     }
 
-    /// <summary>目标 QQ 不在联系人里时，给模型一句可自查的提示。</summary>
+    /// <summary>
+    /// 目标 QQ 不在联系人里时，给模型一句可自查的提示
+    /// </summary>
     private string ContactHint(string userId)    {
         if (_contacts.ByQq(userId) is not null) return "";
 

@@ -2,30 +2,46 @@ using System.Text.Json;
 
 namespace StarGameAI.Core;
 
-/// <summary>思想层发散用的一条储存。</summary>
+/// <summary>
+/// 思想层发散用的一条储存
+/// </summary>
 public sealed class StoreItem
 {
     public string Id { get; set; } = "";
 
-    /// <summary>seed = 从记忆整理出来的种子；residue = 做完一件事剩下来的残渣。</summary>
+    /// <summary>
+    /// seed = 从记忆整理出来的种子；residue = 做完一件事剩下来的残渣
+    /// </summary>
     public string Kind { get; set; } = "seed";
 
-    /// <summary>具体的一件事，一句话。不是形容词摘要。</summary>
+    /// <summary>
+    /// 具体的一件事，一句话。不是形容词摘要
+    /// </summary>
     public string Thing { get; set; } = "";
 
-    /// <summary>原话颗粒：撑着这件事的原始碎片，留着别磨平。</summary>
+    /// <summary>
+    /// 原话颗粒：撑着这件事的原始碎片，留着别磨平
+    /// </summary>
     public List<string> Grain { get; set; } = new();
 
-    /// <summary>没做完的那部分。发散从这里接着长。</summary>
+    /// <summary>
+    /// 没做完的那部分。发散从这里接着长
+    /// </summary>
     public string Open { get; set; } = "";
 
-    /// <summary>从哪个落点来的。</summary>
+    /// <summary>
+    /// 从哪个落点来的
+    /// </summary>
     public string Source { get; set; } = "";
 
-    /// <summary>open / done</summary>
+    /// <summary>
+    /// open / done
+    /// </summary>
     public string State { get; set; } = "open";
 
-    /// <summary>被发散取用过几次。少的先取，免得每次都从同一条长。</summary>
+    /// <summary>
+    /// 被发散取用过几次。少的先取，免得每次都从同一条长
+    /// </summary>
     public int Hits { get; set; }
 
     public long CreatedAt { get; set; }
@@ -49,7 +65,9 @@ public sealed class IdeaStore
 
     private string StoreFile => Path.Combine(_env.IdeaDir, "store.json");
 
-    /// <summary>读全部条目。</summary>
+    /// <summary>
+    /// 读全部条目
+    /// </summary>
     public List<StoreItem> Load()
     {
         try
@@ -83,7 +101,9 @@ public sealed class IdeaStore
         }
     }
 
-    /// <summary>取几条给发散用：没被碰过的先来，同一条别连着用。</summary>
+    /// <summary>
+    /// 取几条给发散用：没被碰过的先来，同一条别连着用
+    /// </summary>
     public List<StoreItem> Top(int max = 4)
     {
         var all = Load().Where(i => i.State == "open").ToList();
@@ -97,7 +117,9 @@ public sealed class IdeaStore
             .ToList();
     }
 
-    /// <summary>记一次取用。</summary>
+    /// <summary>
+    /// 记一次取用
+    /// </summary>
     public void MarkHit(IEnumerable<string> ids)
     {
         var want = new HashSet<string>(ids ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
@@ -118,7 +140,9 @@ public sealed class IdeaStore
         if (changed) Save(all);
     }
 
-    /// <summary>整体替换（整理过程产出后调用）。同一件事会并进同一条，词句更新但颗粒留住。</summary>
+    /// <summary>
+    /// 整体替换（整理过程产出后调用）。同一件事会并进同一条，词句更新但颗粒留住
+    /// </summary>
     public void Replace(IEnumerable<StoreItem> fresh)
     {
         var old = Load();
@@ -199,7 +223,9 @@ public sealed class IdeaStore
         Save(all);
     }
 
-    /// <summary>手工加一条（后台调试用）。</summary>
+    /// <summary>
+    /// 手工加一条（后台调试用）
+    /// </summary>
     public StoreItem Add(string thing, string open, string source)
     {
         var all = Load();

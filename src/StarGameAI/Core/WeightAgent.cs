@@ -4,7 +4,9 @@ using StarGameAI.Llm;
 
 namespace StarGameAI.Core;
 
-/// <summary>加权意向的合并子 AI。</summary>
+/// <summary>
+/// 加权意向的合并子 AI
+/// </summary>
 public sealed class WeightAgent
 {
     private const string Prompt = """
@@ -42,7 +44,9 @@ public sealed class WeightAgent
         _log = log;
     }
 
-    /// <summary>一次合并的结果，给后台和日志看。</summary>
+    /// <summary>
+    /// 一次合并的结果，给后台和日志看
+    /// </summary>
     public sealed class MergeOutcome
     {
         public string Kind { get; set; } = "group";
@@ -57,7 +61,9 @@ public sealed class WeightAgent
         public string Note { get; set; } = "";
     }
 
-    /// <summary>把收敛得到的意向并进对应的桶。</summary>
+    /// <summary>
+    /// 把收敛得到的意向并进对应的桶
+    /// </summary>
     public async Task<MergeOutcome> MergeAsync(
         string kind, string target, string who, string topic, string origin, IEnumerable<string> items, CancellationToken ct)
     {
@@ -300,7 +306,9 @@ public sealed class WeightAgent
         return _chains.MergeGroups(same);
     }
 
-    /// <summary>解析 [[1,3,4]] 这种下标分组，越界的丢掉。</summary>
+    /// <summary>
+    /// 解析 [[1,3,4]] 这种下标分组，越界的丢掉
+    /// </summary>
     private static List<List<int>> ParseGroups(string raw, int count)
     {
         var groups = new List<List<int>>();

@@ -1,6 +1,8 @@
-﻿namespace StarGameAI.Core;
+namespace StarGameAI.Core;
 
-/// <summary>进程内的「最近活动」标记。作息调度器靠它判断「现在是不是空闲」，</summary>
+/// <summary>
+/// 进程内的「最近活动」标记。作息调度器靠它判断「现在是不是空闲」
+/// </summary>
 public sealed class Activity
 {
     private long _lastMessageTs;
@@ -14,7 +16,9 @@ public sealed class Activity
 
     public void TouchSleep() => Interlocked.Exchange(ref _lastSleepTs, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-    /// <summary>距上一条消息过去了多少秒（没有消息时返回 int.MaxValue）。</summary>
+    /// <summary>
+    /// 距上一条消息过去了多少秒（没有消息时返回 int.MaxValue）
+    /// </summary>
     public int IdleSeconds()
     {
         var ts = LastMessageTs;

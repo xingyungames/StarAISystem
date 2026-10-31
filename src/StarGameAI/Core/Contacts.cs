@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace StarGameAI.Core;
 
@@ -11,11 +11,15 @@ public sealed class Contact
     public long LastSeen { get; set; }
     public int Messages { get; set; }
 
-    /// <summary>这个人在哪些场景里说过话（private:QQ / group:群号）。</summary>
+    /// <summary>
+    /// 这个人在哪些场景里说过话（private:QQ / group:群号）
+    /// </summary>
     public List<string> Scopes { get; set; } = new();
 }
 
-/// <summary>联系人目录：QQ 号 ↔ 名字的映射。</summary>
+/// <summary>
+/// 联系人目录：QQ 号 ↔ 名字的映射
+/// </summary>
 public sealed class Contacts
 {
     private readonly Env _env;
@@ -54,7 +58,9 @@ public sealed class Contacts
         catch { /* 忽略 */ }
     }
 
-    /// <summary>收到一条消息时登记/更新联系人。</summary>
+    /// <summary>
+    /// 收到一条消息时登记/更新联系人
+    /// </summary>
     public void Touch(string userId, string name, string scope = "")
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
@@ -94,7 +100,9 @@ public sealed class Contacts
         lock (_lock) return _map.Values.OrderByDescending(c => c.LastSeen).ToList();
     }
 
-    /// <summary>按名字 / 别名 / QQ 号做模糊查找，最近的排在前面。</summary>
+    /// <summary>
+    /// 按名字 / 别名 / QQ 号做模糊查找，最近的排在前面
+    /// </summary>
     public List<Contact> Search(string query, int max = 8)
     {
         var q = (query ?? "").Trim();
@@ -130,7 +138,9 @@ public sealed class Contacts
         foreach (var a in c.Aliases) yield return a;
     }
 
-    /// <summary>给模型看的一行描述。</summary>
+    /// <summary>
+    /// 给模型看的一行描述
+    /// </summary>
     public static string Describe(Contact c, bool verbose = false)
     {
         var aliases = c.Aliases.Count > 0 ? "（也叫：" + string.Join("、", c.Aliases) + "）" : "";
@@ -150,7 +160,9 @@ public sealed class Contacts
     private long _privatePartnersAt;
     private readonly object _partnerLock = new();
 
-    /// <summary>这个号是不是「可以私聊的人」。</summary>
+    /// <summary>
+    /// 这个号是不是「可以私聊的人」
+    /// </summary>
     public bool IsPrivatePartner(string userId)
     {
         var uid = (userId ?? "").Trim();
@@ -166,7 +178,9 @@ public sealed class Contacts
         return PrivatePartnerIds().Contains(uid);
     }
 
-    /// <summary>所有可以私聊的 QQ 号。扫盘结果缓存 60 秒，避免每次刷新都遍历目录。</summary>
+    /// <summary>
+    /// 所有可以私聊的 QQ 号。扫盘结果缓存 60 秒，避免每次刷新都遍历目录
+    /// </summary>
     public HashSet<string> PrivatePartnerIds()
     {
         lock (_partnerLock)

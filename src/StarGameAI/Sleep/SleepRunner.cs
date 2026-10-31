@@ -2,7 +2,9 @@ using StarGameAI.Core;
 
 namespace StarGameAI.Sleep;
 
-/// <summary>把「手动触发一次巩固」包装成可取消的后台任务。</summary>
+/// <summary>
+/// 把「手动触发一次巩固」包装成可取消的后台任务
+/// </summary>
 public sealed class SleepRunner
 {
     private readonly Consolidator _consolidator;

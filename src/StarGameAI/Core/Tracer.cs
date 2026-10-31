@@ -1,10 +1,12 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
 namespace StarGameAI.Core;
 
-/// <summary>一次神经元调用的句柄。</summary>
+/// <summary>
+/// 一次神经元调用的句柄
+/// </summary>
 public sealed class SpanHandle
 {
     public string TraceId { get; init; } = "";
@@ -14,7 +16,9 @@ public sealed class SpanHandle
     public int InChars { get; init; }
 }
 
-/// <summary>神经元级别的埋点。</summary>
+/// <summary>
+/// 神经元级别的埋点
+/// </summary>
 public sealed class Tracer
 {
     private static readonly UTF8Encoding Utf8 = new(false);
@@ -86,7 +90,9 @@ public sealed class Tracer
         }
     }
 
-    /// <summary>读取某天的全部 span（按 trace 聚合交给上层）。</summary>
+    /// <summary>
+    /// 读取某天的全部 span（按 trace 聚合交给上层）
+    /// </summary>
     public List<Dictionary<string, JsonElement>> Read(DateOnly date)
     {
         var path = FileFor(date);
@@ -119,7 +125,9 @@ public sealed class Tracer
         return list;
     }
 
-    /// <summary>清理超过保留期的 span 文件。</summary>
+    /// <summary>
+    /// 清理超过保留期的 span 文件
+    /// </summary>
     public int Prune(int retainDays)
     {
         try
