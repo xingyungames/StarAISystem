@@ -28,6 +28,8 @@
 
 项目中引用名为'神经元'（一般称呼为子AI/子代理）的理念做为核心概念，将大部分操作交由神经元处理
 
+
+
 ---
 
 ## 前置配置
@@ -46,28 +48,28 @@
 
 ``` Mermaid
 flowchart TD
-    NC["NapCat (OneBot 11 HTTP)<br/>POST / (HMAC-SHA1 签名)"]
+    NC["NapCat OneBot 11 HTTP POST HMAC-SHA1 签名"]
 
     NC --> GW
 
-    subgraph GW_BOX["Gateway"]
-        GW["Receiver → 去重 → 拍平 → 落盘日志 → 入队"]
+    subgraph GW_BOX ["Gateway"]
+        GW["Receiver -> 去重 -> 拍平 -> 落盘日志 -> 入队"]
     end
 
     GW --> IW
 
-    subgraph IW_BOX["InboundWorker（串行）"]
+    subgraph IW_BOX ["InboundWorker（串行）"]
         IW["InboundWorker"]
-        IW --> R1["DialogueRouter<br/>分块观测"]
-        IW --> R2["Gate<br/>发言门：该不该开口"]
-        IW --> R3["Recall<br/>浅层碎片 → 分层唤醒 → 深层画像"]
-        IW --> R4["Context<br/>人设 / 身份卡 / 约定 / 我说过的话"]
-        IW --> R5["Sender<br/>分段发送 → 追加层 → 收尾"]
+        IW --> R1["DialogueRouter 分块观测"]
+        IW --> R2["Gate 发言门：该不该开口"]
+        IW --> R3["Recall 浅层碎片 -> 分层唤醒 -> 深层画像"]
+        IW --> R4["Context 人设 / 身份卡 / 约定 / 我说过的话"]
+        IW --> R5["Sender 分段发送 -> 追加层 -> 收尾"]
     end
 
     IW --> IE
 
-    subgraph IE_BOX["IdeaEngine（每 N 分钟）"]
+    subgraph IE_BOX ["IdeaEngine（每 N 分钟）"]
         IE["IdeaEngine"]
         IE --> IE1["意图子AI"]
         IE1 --> IE2["发散·上下文"]
@@ -82,8 +84,8 @@ flowchart TD
 
     IE --> SS
 
-    subgraph SS_BOX["SleepScheduler → Consolidator"]
-        SS["SleepScheduler → Consolidator"]
+    subgraph SS_BOX ["SleepScheduler -> Consolidator"]
+        SS["SleepScheduler -> Consolidator"]
         SS --> S1["分片"]
         S1 --> S2["蒸馏"]
         S2 --> S3["归并"]
