@@ -529,8 +529,9 @@ public sealed class IdeaEngine : BackgroundService
         var list = new List<RouteSlot>();
 
         //遍历白名单群
+        //落点必须是 kind:id，裸号一进发送层就会被当成群号
         foreach (var gid in _env.Server.Whitelist.Groups)
-            list.Add(new RouteSlot("group", gid, "群（群号 " + gid + "）"));
+            list.Add(new RouteSlot("group", "group:" + gid, "群（群号 " + gid + "）"));
         //遍历私聊白名单
         foreach (var c in _contacts.All())
         {
@@ -539,7 +540,7 @@ public sealed class IdeaEngine : BackgroundService
 
             var name = c.Name.Trim();
             if (name.Length == 0) name = c.Aliases.FirstOrDefault() ?? c.UserId;
-            list.Add(new RouteSlot("private", c.UserId, "私聊 " + name + "（QQ " + c.UserId + "）"));
+            list.Add(new RouteSlot("private", "private:" + c.UserId, "私聊 " + name + "（QQ " + c.UserId + "）"));
         }
 
         return list;
@@ -944,6 +945,20 @@ public sealed class IdeaEngine : BackgroundService
 
                 chosen.Intent = verdict.Channel == "group" ? "speech" : chosen.Intent;
                 if (verdict.Why.Length > 0) chosen.Reason = verdict.Why;
+
+                // 落点必须带前缀。裸号进到发送层会被当成群号，
+                // 于是私聊内容按群发出去——这一条是真的漏到过群里
+                chosen.Target = NormalizeTarget(chosen.Target, verdict.Channel);
+            }
+
+            // 最后一道校验：没有前缀的落点一律不往下走
+            if (chosen.Target.Length == 0)
+            {
+                round.Outcome = "error";
+                round.Detail = "落点为空或补不出 private:/group: 前缀";
+                _log.LogError("落点不合法，本轮不发送：{Target}", chosen.Target);
+                Finish(round, sw);
+                return;
             }
 
             round.Decisions.Add(new IdeaDecision
@@ -1986,6 +2001,29 @@ public sealed class IdeaEngine : BackgroundService
             _ => s,
         };
     }
+
+    /// <summary>
+    /// 把落点补成 kind:id
+    /// </summary>
+    /// <param name="target">模型或路由给的落点，可能是裸号</param>
+    /// <param name="channel">private / group，用来决定补哪个前缀</param>
+    /// <returns>带前缀的落点；补不出来返回空串，调用方必须当作不合法</returns>
+    private static string NormalizeTarget(string target, string channel)
+    {
+        var t = (target ?? "").Trim();
+        if (t.Length == 0) return "";
+
+        if (t.StartsWith("private:", StringComparison.Ordinal) || t.StartsWith("group:", StringComparison.Ordinal))
+            return t;
+
+        return channel switch
+        {
+            "private" => "private:" + t,
+            "group" => "group:" + t,
+            _ => "",
+        };
+    }
+
 
     /// <summary>
     /// 两个主题标签是不是同一件事

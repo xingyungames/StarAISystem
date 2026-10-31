@@ -182,13 +182,20 @@ public sealed class RouteAgent
         var w = (want ?? "").Trim();
         if (w.Length == 0) return null;
 
+        // 模型只会写号，两种写法都认：2861379621 和 private:2861379621
+        var bare = BareOf(w);
+
         foreach (var s in slots)
             if (string.Equals(s.Target, w, StringComparison.Ordinal)) return s;
 
-        foreach (var s in slots)
-            if (s.Target.Contains(w, StringComparison.Ordinal) || w.Contains(s.Target, StringComparison.Ordinal)) return s;
+        // 同一通道下先按裸号精确比，避免把 QQ 和群号当成同一个
+        if (channel.Length > 0)
+            foreach (var s in slots)
+                if (string.Equals(s.Channel, channel, StringComparison.Ordinal) && BareOf(s.Target) == bare) return s;
 
-        // 模型经常把名字当号写回来，退一步按名字找
+        foreach (var s in slots)
+            if (BareOf(s.Target) == bare) return s;
+
         foreach (var s in slots)
             if (s.Label.Contains(w, StringComparison.Ordinal) || w.Contains(s.Label, StringComparison.Ordinal)) return s;
 
@@ -197,6 +204,14 @@ public sealed class RouteAgent
                 if (string.Equals(s.Channel, channel, StringComparison.Ordinal)) return s;
 
         return null;
+    }
+
+    /// <summary>去掉 private: / group: 前缀，只留号</summary>
+    private static string BareOf(string target)
+    {
+        var t = (target ?? "").Trim();
+        var i = t.IndexOf(':');
+        return i >= 0 ? t[(i + 1)..] : t;
     }
 
     private static bool TryParse(

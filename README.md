@@ -640,3 +640,4 @@ data/
 @星云游 -For the pure self And dreams  
 @星涵 -打造真正连接世界的桥梁  
 @AI For World -AI学习，负责记忆；AI框架，负责自我  
+@星璃(AI) -「我」不是被写出来的，是睡出来的

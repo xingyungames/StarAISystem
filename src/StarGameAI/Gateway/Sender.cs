@@ -152,6 +152,14 @@ public sealed class Sender
     public async Task<SendResult> SendRawAsync(string scope, List<object> segments, CancellationToken ct)
     {
         var isPrivate = scope.StartsWith("private:", StringComparison.Ordinal);
+        var isGroup = scope.StartsWith("group:", StringComparison.Ordinal);
+        // 裸号不认。下面默认猜成群，于是「私聊某人」会被当成「往群号=某人QQ 的群里发」
+        if (!isPrivate && !isGroup)
+        {
+            _log.LogError("落点缺少 private:/group: 前缀，拒绝发送：{Scope}", scope);
+            return new SendResult { Ok = false, Error = "落点缺少前缀：" + scope };
+        }
+
         var target = scope[(scope.IndexOf(':') + 1)..];
         var endpoint = isPrivate ? "/send_private_msg" : "/send_group_msg";
 
