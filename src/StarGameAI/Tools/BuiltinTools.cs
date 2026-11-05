@@ -26,10 +26,13 @@ public sealed class BuiltinTools
     private readonly Dedup _dedup;
     private readonly Contacts _contacts;
     private readonly Presence _presence;
+    private readonly RecallService _recall;
+    private readonly RecallSession _recallSession;
     private readonly ILogger<BuiltinTools> _log;
 
     public BuiltinTools(Env env, Sandbox sandbox, Sender sender, ChatLog chatLog,
-        Dedup dedup, Contacts contacts, Presence presence, ILogger<BuiltinTools> log)
+        Dedup dedup, Contacts contacts, Presence presence,
+        RecallService recall, RecallSession recallSession, ILogger<BuiltinTools> log)
     {
         _env = env;
         _sandbox = sandbox;
@@ -38,6 +41,8 @@ public sealed class BuiltinTools
         _dedup = dedup;
         _contacts = contacts;
         _presence = presence;
+        _recall = recall;
+        _recallSession = recallSession;
         _log = log;
         Defs = BuildDefs();
     }
@@ -62,7 +67,8 @@ public sealed class BuiltinTools
     public bool IsBuiltin(string name) =>
         name is "sb_list" or "sb_read" or "sb_write" or "sb_mkdir" or "sb_delete" or "sb_move"
             or "qq_find" or "qq_send_private" or "qq_poke"
-            or "qq_send_file_private" or "qq_send_file_group";
+            or "qq_send_file_private" or "qq_send_file_group"
+            or "history_recall";
 
     private static ToolDef Fn(string name, string desc, Dictionary<string, object> props, params string[] required) =>
         new()
@@ -145,6 +151,16 @@ public sealed class BuiltinTools
                 ["path"] = P("string", "沙箱内的相对路径"),
                 ["name"] = P("string", "上传后的文件名，留空用原文件名"),
             }, "group_id", "path"),
+
+        Fn("history_recall", "翻自己以前的聊天留档，把原话找回来。\n" +
+                             "只在**你确实想不起来**的时候用：先看记忆里有没有，没有再用它。\n" +
+                             "query 写用户的原话最好，比如「你还记得那个暗号吗」。\n" +
+                             "翻不到就老实说不记得，不要编。",
+            new()
+            {
+                ["query"] = P("string", "要查的那件事，尽量用用户的原话"),
+                ["days"] = P("number", "往回翻多少天，留空默认 30，最多看配置上限"),
+            }, "query"),
     };
 
     public async Task<string> InvokeAsync(string name, JsonElement args, ToolCallContext ctx, CancellationToken ct)
@@ -166,6 +182,7 @@ public sealed class BuiltinTools
                     Str(args, "path"), Str(args, "name"), ctx, ct),
                 "qq_send_file_group" => await QqSendFileAsync(true, Str(args, "group_id"),
                     Str(args, "path"), Str(args, "name"), ctx, ct),
+                "history_recall" => await HistoryRecallAsync(Str(args, "query"), Int(args, "days"), ctx, ct),
                 _ => $"未知的内置工具：{name}",
             };
         }
@@ -439,6 +456,48 @@ public sealed class BuiltinTools
     }
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
+
+    private static int Int(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object) return 0;
+        if (!args.TryGetProperty(name, out var v)) return 0;
+
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return n;
+        if (v.ValueKind == JsonValueKind.String && int.TryParse(v.GetString(), out var m)) return m;
+        return 0;
+    }
+
+    /// <summary>
+    /// 翻旧账：把以前的原话找回来，并留在上下文里
+    ///
+    /// 只在「确实想不起来」时调。翻到了就注入，翻不到就老实说没有——
+    /// 绝不能拿关键词凑一段看似相关的东西塞回去，那比说不知道更糟。
+    /// </summary>
+    private async Task<string> HistoryRecallAsync(string query, int days, ToolCallContext ctx, CancellationToken ct)
+    {
+        var scope = (ctx.Scope ?? "").Trim();
+        if (scope.Length == 0) return "工具失败：不知道当前在哪个会话里，没法查留档";
+
+        // 已经在上下文里的、和这一轮已经注入过的，都不再重复找
+        var exclude = _recallSession.InjectedMsgIds(scope);
+
+        var outcome = await _recall.SearchAsync(query, scope, days, exclude, ct);
+
+        if (!outcome.Found)
+        {
+            _log.LogInformation("回溯没找到：{Query}（{Note}）", Trim(query, 40), outcome.Note);
+            return outcome.Text.Length > 0 ? outcome.Text : "翻不到这段记录。";
+        }
+
+        // 记忆层命中：不用注入，直接告诉模型它本来就知道
+        if (outcome.Lines.Count == 0) return outcome.Text;
+
+        _recallSession.Append(scope, outcome.Lines);
+        _log.LogInformation("回溯命中：{Query} → {Count} 段（{Note}）",
+            Trim(query, 40), outcome.Lines.Count, outcome.Note);
+
+        return outcome.Text;
+    }
 
 
     private static string Str(JsonElement args, string name)

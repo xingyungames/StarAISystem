@@ -1224,6 +1224,8 @@ public static class AdminApi
             var known = partners.ToList();
             var items = presence.All(known)
                 .Where(v => partners.Contains(v.UserId))
+                //被排除的人不出现在这张表里
+                .Where(v => !env.Idea.IsExcluded(v.UserId))
                 .Select(v =>
                 {
                     var c = contacts.ByQq(v.UserId);
@@ -1254,7 +1256,45 @@ public static class AdminApi
                 },
                 counters = gate.TodayCounters(),
                 items,
+                excluded = env.Idea.ExcludedTargets ?? new List<string>(),
             });
+        });
+
+        // 把一个人移出思想层的主动范围
+        // 只加排除表，不动联系人：联系人还要给记忆、身份、正常回复用
+        app.MapDelete("/api/presence/{userId}", (HttpContext ctx, Env env, Presence presence, string userId) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var id = (userId ?? "").Trim();
+            if (id.Length == 0) return Bad("userId 不能为空");
+
+            presence.ClearManual(id);
+
+            env.Idea.ExcludedTargets ??= new List<string>();
+            if (!env.Idea.ExcludedTargets.Contains(id)) env.Idea.ExcludedTargets.Add(id);
+
+            Env.WriteAtomic(Path.Combine(env.ConfigDir, "idea.json"),
+                JsonSerializer.Serialize(env.Idea, AppJson.Config));
+
+            Audit(env, "presence.remove", new { userId = id });
+            return Results.Json(new { ok = true, excluded = env.Idea.ExcludedTargets });
+        });
+
+        // 放回主动范围
+        app.MapDelete("/api/presence/{userId}/exclude", (HttpContext ctx, Env env, string userId) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var id = (userId ?? "").Trim();
+            env.Idea.ExcludedTargets ??= new List<string>();
+            env.Idea.ExcludedTargets.RemoveAll(x => string.Equals(x, id, StringComparison.Ordinal));
+
+            Env.WriteAtomic(Path.Combine(env.ConfigDir, "idea.json"),
+                JsonSerializer.Serialize(env.Idea, AppJson.Config));
+
+            Audit(env, "presence.restore", new { userId = id });
+            return Results.Json(new { ok = true, excluded = env.Idea.ExcludedTargets });
         });
 
         app.MapPost("/api/presence/manual", async (HttpContext ctx, Env env, Presence presence) =>
@@ -1554,6 +1594,69 @@ public static class AdminApi
 
             Audit(env, "idea.weight.merge_topics", new { merged = merged });
             return Results.Json(new { ok = true, merged = merged });
+        });
+
+        // 回溯目录：看看切了多少段、目录长什么样
+        app.MapGet("/api/recall/index", (HttpContext ctx, Env env, RecallIndex index) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var all = index.Load();
+            return Results.Json(new
+            {
+                config = env.Recall,
+                total = all.Count,
+                by_scope = all.GroupBy(e => e.Scope)
+                    .OrderByDescending(g => g.Count())
+                    .Select(g => new { scope = g.Key, count = g.Count() }),
+                by_date = all.GroupBy(e => e.Date)
+                    .OrderByDescending(g => g.Key, StringComparer.Ordinal)
+                    .Select(g => new { date = g.Key, count = g.Count() }),
+                sample = all.OrderByDescending(e => e.Date, StringComparer.Ordinal)
+                    .ThenByDescending(e => e.FromTs)
+                    .Take(10)
+                    .Select(e => new
+                    {
+                        date = e.Date,
+                        scope = e.Scope,
+                        count = e.Count,
+                        summary = e.Summary,
+                        entities = e.Entities,
+                    }),
+            });
+        });
+
+        // 回溯预览：给定场景和日期，直接看目录长什么样（不调模型）
+        app.MapPost("/api/recall/preview", async (HttpContext ctx, Env env, RecallIndex index) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var body = await ReadJsonAsync(ctx);
+            if (body is null) return Bad("请求体不是合法 JSON");
+
+            var scope = StrOf(body.RootElement, "scope");
+            var date = StrOf(body.RootElement, "date");
+
+            var blocks = index.Load()
+                .Where(e => scope.Length == 0 || e.Scope == scope)
+                .Where(e => date.Length == 0 || e.Date == date)
+                .OrderByDescending(e => e.FromTs)
+                .Take(5)
+                .ToList();
+
+            return Results.Json(new
+            {
+                blocks = blocks.Select(b => new
+                {
+                    b.Date,
+                    b.Scope,
+                    b.Count,
+                    b.Summary,
+                    b.Entities,
+                }),
+                catalog = RecallIndex.Render(blocks, env.Recall.MaxCatalogChars, out var cut),
+                truncated = cut,
+            });
         });
 
         app.MapPost("/api/idea/weights/cleanup-legacy", (HttpContext ctx, Env env, IdeaChainStore chains) =>

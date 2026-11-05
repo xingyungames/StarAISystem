@@ -53,6 +53,10 @@ builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<IdeaGate>();
 builder.Services.AddSingleton<IdeaChainStore>();
 builder.Services.AddSingleton<IdeaStore>();
+builder.Services.AddSingleton<RecallIndex>();
+builder.Services.AddSingleton<RecallService>();
+builder.Services.AddSingleton<RecallSession>();
+builder.Services.AddSingleton<RecallBuilder>();
 builder.Services.AddSingleton<IntentAgent>();
 builder.Services.AddSingleton<WeightAgent>();
 builder.Services.AddSingleton<RouteAgent>();
@@ -103,9 +107,21 @@ try
     if (topicMerged > 0)
         Console.WriteLine($"[启动] 已归并 {topicMerged} 条同义的加权意向");
 
+    // 回溯目录首次铺底：目录空的时候把最近 30 天的留档切块
+    // 之后由每天巩固增量补，这里只做一次，避免每次启动都扫全量日志
+    {
+        var indexRef = app.Services.GetRequiredService<RecallIndex>();
+        if (indexRef.Load().Count == 0)
+        {
+            var builderRef = app.Services.GetRequiredService<RecallBuilder>();
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var made = builderRef.Build(today.AddDays(-30), today);
+            if (made > 0) Console.WriteLine($"[启动] 回溯目录铺底：{made} 段");
+        }
+    }
+
     // 用联系人目录校正名字：模型给的名字不可信（出现过代词、也出现过张冠李戴）
-    var contactsRef = app.Services.GetRequiredService<Contacts>();
-    var whoFixed = app.Services.GetRequiredService<IdeaChainStore>()
+    var contactsRef = app.Services.GetRequiredService<Contacts>();    var whoFixed = app.Services.GetRequiredService<IdeaChainStore>()
         .FixWho(uid => contactsRef.ByQq(uid)?.Name ?? "");
     if (whoFixed > 0)
         Console.WriteLine($"[启动] 已按联系人目录校正 {whoFixed} 条加权意向的名字");

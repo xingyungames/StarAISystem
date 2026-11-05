@@ -805,11 +805,16 @@ export function render(container, api) {
       h('td', { class: 'tiny muted' }, it.note || '-'),
       h('td', { class: 'tiny muted' }, it.last_seen ? fmtTime(it.last_seen) : '-'),
       h('td', {},
-        btn('在线', 'btn-ok', () => setManual(it.user_id, 'online', '', 0)),
-        btn('离线', 'btn-danger', () => setManual(it.user_id, 'offline', '', 0)),
-        it.manual
-          ? btn('清除手动', 'btn-ghost', () => clearManual(it.user_id))
-          : h('span', { class: 'tiny muted' }, '自动')
+        // 四个按钮挤在一格会把表格撑出横向滚动条，「移除」就被推到看不见的地方
+        // 所以让它们在一格内换行，列宽收住
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;max-width:200px' },
+          btn('在线', 'btn-ok', () => setManual(it.user_id, 'online', '', 0)),
+          btn('离线', 'btn-danger', () => setManual(it.user_id, 'offline', '', 0)),
+          it.manual
+            ? btn('清除手动', 'btn-ghost', () => clearManual(it.user_id))
+            : h('span', { class: 'tiny muted' }, '自动'),
+          btn('移除', 'btn-ghost', () => removePresence(it.user_id, it.name))
+        )
       )
     ));
 
@@ -855,8 +860,24 @@ export function render(container, api) {
             )),
             h('tbody', {}, ...rows)
           )),
+      excludedRow(pres.excluded || []),
       pager
     );
+  }
+
+  // 已经移出主动范围的人：留一行可以放回来
+  function excludedRow(excluded) {
+    if (!excluded || excluded.length === 0) return null;
+
+    return h('div', { class: 'note', style: 'margin-top:10px' },
+      h('span', { class: 'tiny muted' }, '已移出主动范围（' + excluded.length + ' 人）：'),
+      ...excluded.flatMap((id) => [
+        h('span', { class: 'mono tiny' }, id),
+        h('button', {
+          class: 'btn btn-ghost btn-sm', type: 'button', style: 'margin:0 10px 0 4px',
+          onclick: () => restorePresence(id),
+        }, '放回'),
+      ]));
   }
 
   function btn(label, cls, onclick) {
@@ -891,6 +912,34 @@ export function render(container, api) {
     } catch (err) {
       if (disposed || err.status === 401) return;
       toast('清除失败：' + err.message, 'danger');
+    }
+  }
+
+  // 移出思想层的主动范围
+  // 只加排除表，不删联系人：联系人还要给记忆、身份、正常回复用
+  async function removePresence(userId, name) {
+    if (!window.confirm('把 ' + (name || userId) + ' 移出思想层的主动范围？\n\n'
+      + '它不会再主动找这个人说话，正常聊天不受影响。随时可以在下面放回来。')) return;
+    try {
+      await api('/api/presence/' + encodeURIComponent(userId), { method: 'DELETE' });
+      if (disposed) return;
+      toast('已移出：' + (name || userId), 'ok');
+      load();
+    } catch (err) {
+      if (disposed || err.status === 401) return;
+      toast('移出失败：' + err.message, 'danger');
+    }
+  }
+
+  async function restorePresence(userId) {
+    try {
+      await api('/api/presence/' + encodeURIComponent(userId) + '/exclude', { method: 'DELETE' });
+      if (disposed) return;
+      toast('已放回：' + userId, 'ok');
+      load();
+    } catch (err) {
+      if (disposed || err.status === 401) return;
+      toast('放回失败：' + err.message, 'danger');
     }
   }
 
