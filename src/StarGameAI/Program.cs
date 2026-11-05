@@ -54,6 +54,7 @@ builder.Services.AddSingleton<IdeaGate>();
 builder.Services.AddSingleton<IdeaChainStore>();
 builder.Services.AddSingleton<IdeaStore>();
 builder.Services.AddSingleton<RecallIndex>();
+builder.Services.AddSingleton<RecallTrace>();
 builder.Services.AddSingleton<RecallService>();
 builder.Services.AddSingleton<RecallSession>();
 builder.Services.AddSingleton<RecallBuilder>();

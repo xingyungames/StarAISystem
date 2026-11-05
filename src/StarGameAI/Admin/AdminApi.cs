@@ -1626,6 +1626,13 @@ public static class AdminApi
             });
         });
 
+        // 回溯记账：最近几次查了什么、挑中哪块、注入了什么
+        app.MapGet("/api/recall/trace", (HttpContext ctx, Env env, RecallTrace trace) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+            return Results.Json(new { items = trace.Recent(20) });
+        });
+
         // 回溯预览：给定场景和日期，直接看目录长什么样（不调模型）
         app.MapPost("/api/recall/preview", async (HttpContext ctx, Env env, RecallIndex index) =>
         {

@@ -625,6 +625,28 @@ public sealed class IdeaConfig
     public WeightConfig Weight { get; set; } = new();
     public ChainConfig Chain { get; set; } = new();
     public RouteConfig Route { get; set; } = new();
+
+    /// <summary>
+    /// 不主动搭理的号（QQ 或群号）。这些人仍然正常聊天，只是思想层不会主动找他们
+    /// </summary>
+    public List<string> ExcludedTargets { get; set; } = new();
+
+    /// <summary>
+    /// 这个号是不是被排除在思想层主动行为之外
+    /// </summary>
+    /// <param name="id">QQ 号或群号，带不带 private:/group: 前缀都行</param>
+    /// <returns>被排除返回 true</returns>
+    public bool IsExcluded(string id)
+    {
+        var v = (id ?? "").Trim();
+        if (v.Length == 0) return false;
+
+        var i = v.IndexOf(':');
+        if (i >= 0) v = v[(i + 1)..];
+
+        ExcludedTargets ??= new List<string>();
+        return ExcludedTargets.Any(x => string.Equals((x ?? "").Trim(), v, StringComparison.Ordinal));
+    }
 }
 
 /// <summary>
@@ -644,6 +666,47 @@ public sealed class RouteConfig
     /// 到期之后重新拿出来——那时时间跨度大了，原本做不了的事往往就能做了。
     /// </summary>
     public int HoldMinutes { get; set; } = 180;
+}
+
+/// <summary>
+/// 回溯：AI 想不起来时，去留档里把原话找回来
+/// </summary>
+public sealed class RecallConfig
+{
+    /// <summary>
+    /// 是否启用回溯工具
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 目录总字数在这条线以内就一次全给，超了才分层读
+    /// </summary>
+    public int MaxCatalogChars { get; set; } = 4000;
+
+    /// <summary>
+    /// 一次最多挑几个块
+    /// </summary>
+    public int MaxBlocks { get; set; } = 3;
+
+    /// <summary>
+    /// 一次最多注入几条原文
+    /// </summary>
+    public int MaxInjectEntries { get; set; } = 10;
+
+    /// <summary>
+    /// 一次注入的字数上限，防止把近期对话挤掉
+    /// </summary>
+    public int MaxInjectChars { get; set; } = 1500;
+
+    /// <summary>
+    /// 最多往回翻多少天的目录
+    /// </summary>
+    public int MaxLookbackDays { get; set; } = 120;
+
+    /// <summary>
+    /// 已注入内容在同一段上下文里保留多久（小时）。跨过就算新的一段
+    /// </summary>
+    public int SessionTtlHours { get; set; } = 24;
 }
 
 public sealed class ToolsPolicy
@@ -748,6 +811,10 @@ public sealed class Env
     /// 对话分块的路由参数，后台可实时改写
     /// </summary>
     public DialogueConfig Dialogue { get; set; } = new();
+    /// <summary>
+    /// 回溯：目录、候选块数、注入预算
+    /// </summary>
+    public RecallConfig Recall { get; set; } = new();
     public ToolsPolicy ToolPolicy { get; private init; } = new();
     /// <summary>
     /// 神经元埋点保留天数
@@ -798,6 +865,10 @@ public sealed class Env
     /// </summary>
     public string PresenceFile => Path.Combine(DataDir, "presence.json");
     public string AuditDir => Path.Combine(DataDir, "audit");
+    /// <summary>
+    /// 回溯用的目录与会话缓存
+    /// </summary>
+    public string RecallDir => Path.Combine(DataDir, "recall");
     public string PersonaFile => Path.Combine(PersonaDir, "System Prompt.md");
 
     public static Env Load()
@@ -814,6 +885,7 @@ public sealed class Env
             Persona = ReadJson<PersonaPolicy>(Path.Combine(root, "config", "persona.json")) ?? new PersonaPolicy(),
             Memory = ReadJson<MemoryPolicy>(Path.Combine(root, "config", "memory.json")) ?? new MemoryPolicy(),
             Idea = ReadJson<IdeaConfig>(Path.Combine(root, "config", "idea.json")) ?? new IdeaConfig(),
+            Recall = ReadJson<RecallConfig>(Path.Combine(root, "config", "recall.json")) ?? new RecallConfig(),
             Style = ReadJson<StyleConfig>(Path.Combine(root, "config", "style.json")) ?? new StyleConfig(),
             Dialogue = ReadJson<DialogueConfig>(Path.Combine(root, "config", "dialogue.json")) ?? new DialogueConfig(),
             ToolPolicy = ReadJson<ToolsPolicy>(Path.Combine(root, "config", "tools.policy.json")) ?? new ToolsPolicy(),
@@ -823,7 +895,7 @@ public sealed class Env
                  {
                      env.LogDir, env.MemoryDir, env.ShallowDir, env.DeepPersonDir, env.DeepGroupDir,
                      env.ArchiveDir, env.PersonaDir, env.ToolsDir, env.SleepDir,
-                     env.WorkspaceDir, env.SandboxDir, env.IdeaDir, env.AuditDir,
+                     env.WorkspaceDir, env.SandboxDir, env.IdeaDir, env.AuditDir, env.RecallDir,
                      Path.Combine(env.PersonaDir, "meta"),
                      Path.Combine(env.PersonaDir, "history"),
                  })

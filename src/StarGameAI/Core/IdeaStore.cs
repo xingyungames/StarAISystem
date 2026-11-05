@@ -20,6 +20,14 @@ public sealed class StoreItem
     public string Thing { get; set; } = "";
 
     /// <summary>
+    /// 这条从哪个会话整理出来的（private:xxx / group:xxx）
+    ///
+    /// 必须记：储存是全局的，不带来源就会把群聊内容当成"我私下的记忆"
+    /// 注入私聊——实盘撞过一次，查「EB」命中了一条群聊记录（Liebe 里有 eb）
+    /// </summary>
+    public string Scope { get; set; } = "";
+
+    /// <summary>
     /// 原话颗粒：撑着这件事的原始碎片，留着别磨平
     /// </summary>
     public List<string> Grain { get; set; } = new();
@@ -104,9 +112,15 @@ public sealed class IdeaStore
     /// <summary>
     /// 取几条给发散用：没被碰过的先来，同一条别连着用
     /// </summary>
-    public List<StoreItem> Top(int max = 4)
+    /// <param name="max">最多几条</param>
+    /// <param name="scope">限定来源会话；没记来源的老条目不算命中，免得串场景</param>
+    public List<StoreItem> Top(int max = 4, string? scope = null)
     {
         var all = Load().Where(i => i.State == "open").ToList();
+
+        if (!string.IsNullOrEmpty(scope))
+            all = all.Where(i => i.Scope == scope).ToList();
+
         if (all.Count == 0) return all;
 
         return all

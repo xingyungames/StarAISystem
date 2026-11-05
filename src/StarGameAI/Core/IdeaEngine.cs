@@ -1465,7 +1465,8 @@ public sealed class IdeaEngine : BackgroundService
             //
             // 碎片是原料，三条常说的是同一件事，拿它发散只能长出那几句
             // 储存里是一件事一条，没被取用过的排在前面，同一条不会连着用
-            var seeds = _ideaStore.Top(4);
+            // 必须按落点过滤：储存是全局的，不过滤会把群聊的事拿去私聊发散
+            var seeds = _ideaStore.Top(4, target);
             foreach (var s in seeds)
             {
                 inputs.Memories.Add(s.Thing

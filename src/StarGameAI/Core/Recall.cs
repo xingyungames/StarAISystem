@@ -211,6 +211,98 @@ public sealed class RecallOutcome
     public List<RecallLine> Lines { get; set; } = new();
     public int Tokens { get; set; }
     public string Note { get; set; } = "";
+
+    /// <summary>
+    /// 记账用：这次查了什么、翻了多少、挑中哪些
+    /// </summary>
+    public string Query { get; set; } = "";
+    public string Scope { get; set; } = "";
+    public int Days { get; set; }
+    public int Candidates { get; set; }
+    public bool Truncated { get; set; }
+    /// <summary>
+    /// flat = 一次给全部目录 / byday = 先挑天再挑段
+    /// </summary>
+    public string Mode { get; set; } = "";
+    public List<RecallEntry> Picked { get; set; } = new();
+}
+
+/// <summary>
+/// 回溯记账：一次调用一行，落到 data/recall/trace.jsonl
+///
+/// 没有这个，出问题只能靠猜——「翻到的那段到底是我给的还是模型编的」分不出来。
+/// </summary>
+public sealed class RecallTrace
+{
+    private readonly Env _env;
+    private readonly object _lock = new();
+
+    public RecallTrace(Env env) => _env = env;
+
+    private string PathOf => Path.Combine(_env.RecallDir, "trace.jsonl");
+
+    public void Append(RecallOutcome o)
+    {
+        try
+        {
+            var row = new
+            {
+                ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                scope = o.Scope,
+                query = o.Query.Length > 120 ? o.Query[..120] : o.Query,
+                days = o.Days,
+                mode = o.Mode,
+                candidates = o.Candidates,
+                truncated = o.Truncated,
+                found = o.Found,
+                note = o.Note,
+                tokens = o.Tokens,
+                picked = o.Picked.Select(p => new { p.Date, p.Scope, p.Count, p.Summary }),
+                lines = o.Lines.Select(l => new
+                {
+                    label = l.Label,
+                    count = l.Lines.Count,
+                    ids = l.MsgIds,
+                    text = string.Join(" ⏎ ", l.Lines).Trim() is var t && t.Length > 400 ? t[..400] : t,
+                }),
+                reply = o.Text.Length > 400 ? o.Text[..400] : o.Text,
+            };
+
+            lock (_lock)
+            {
+                Directory.CreateDirectory(_env.RecallDir);
+                File.AppendAllText(PathOf, JsonSerializer.Serialize(row, AppJson.Options) + "\n");
+            }
+        }
+        catch { /* 记账失败不影响主流程 */ }
+    }
+
+    /// <summary>
+    /// 读最近几次
+    /// </summary>
+    public List<JsonElement> Recent(int limit)
+    {
+        var list = new List<JsonElement>();
+        try
+        {
+            if (!File.Exists(PathOf)) return list;
+
+            var lines = File.ReadAllLines(PathOf).Where(l => l.Trim().Length > 0).TakeLast(Math.Max(1, limit));
+            foreach (var line in lines)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    list.Add(doc.RootElement.Clone());
+                }
+                catch { /* 跳过坏行 */ }
+            }
+        }
+        catch { /* 读不到就当没有 */ }
+
+        list.Reverse();
+        return list;
+    }
 }
 
 /// <summary>
@@ -237,10 +329,11 @@ public sealed class RecallService
     private readonly Store _store;
     private readonly IdeaStore _ideaStore;
     private readonly DeepSeekClient _llm;
+    private readonly RecallTrace _trace;
     private readonly ILogger<RecallService> _log;
 
     public RecallService(Env env, ChatLog chatLog, RecallIndex index, Store store,
-        IdeaStore ideaStore, DeepSeekClient llm, ILogger<RecallService> log)
+        IdeaStore ideaStore, DeepSeekClient llm, RecallTrace trace, ILogger<RecallService> log)
     {
         _env = env;
         _chatLog = chatLog;
@@ -248,6 +341,7 @@ public sealed class RecallService
         _store = store;
         _ideaStore = ideaStore;
         _llm = llm;
+        _trace = trace;
         _log = log;
     }
 
@@ -260,6 +354,19 @@ public sealed class RecallService
     /// <param name="excludeMsgIds">已经在上下文里的消息，不再重复注入</param>
     /// <param name="ct">取消</param>
     public async Task<RecallOutcome> SearchAsync(string query, string scope, int days,
+        IEnumerable<string>? excludeMsgIds, CancellationToken ct)
+    {
+        var outcome = await SearchCoreAsync(query, scope, days, excludeMsgIds, ct);
+
+        outcome.Query = query ?? "";
+        outcome.Scope = scope ?? "";
+        outcome.Days = days;
+        _trace.Append(outcome);
+
+        return outcome;
+    }
+
+    private async Task<RecallOutcome> SearchCoreAsync(string query, string scope, int days,
         IEnumerable<string>? excludeMsgIds, CancellationToken ct)
     {
         var cfg = _env.Recall;
@@ -292,6 +399,7 @@ public sealed class RecallService
         // 2. 取目录候选
         days = Math.Clamp(days <= 0 ? 30 : days, 1, Math.Max(1, cfg.MaxLookbackDays));
         var candidates = _index.Blocks(days, scope);
+        outcome.Candidates = candidates.Count;
 
         if (candidates.Count == 0)
         {
@@ -302,17 +410,20 @@ public sealed class RecallService
 
         // 3. 让模型在目录里挑（目录小就一次给完，别为了分层而分层）
         var flat = RecallIndex.Render(candidates, cfg.MaxCatalogChars, out var truncated);
+        outcome.Truncated = truncated;
 
         var pickedBlocks = new List<RecallEntry>();
 
         if (!truncated)
         {
+            outcome.Mode = "flat";
             var picked = await PickAsync(query, flat, candidates.Count, cfg.MaxBlocks, ct, outcome);
             foreach (var i in picked) pickedBlocks.Add(candidates[i]);
         }
         else
         {
             // 目录太大：先挑天，再在那几天里挑段
+            outcome.Mode = "byday";
             var dayIndex = await PickDaysAsync(query, candidates, cfg.MaxCatalogChars, ct, outcome);
             if (dayIndex.Count == 0)
             {
@@ -366,6 +477,7 @@ public sealed class RecallService
 
             used += lines.Lines.Sum(l => l.Length);
             outcome.Lines.Add(lines);
+            outcome.Picked.Add(block);
         }
 
         if (outcome.Lines.Count == 0)
@@ -439,7 +551,9 @@ public sealed class RecallService
 
         try
         {
-            foreach (var item in _ideaStore.Load())
+            // 必须按来源场景过滤：
+            // 思想储存是全局的，不过滤就会把群聊里的事当成"我私下的记忆"塞进私聊
+            foreach (var item in _ideaStore.Top(20, scope))
             {
                 if (item.Thing.Length == 0) continue;
                 if (!TextSim.SharesTerm(query, item.Thing)) continue;

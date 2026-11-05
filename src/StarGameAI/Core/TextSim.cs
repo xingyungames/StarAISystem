@@ -48,25 +48,55 @@ public static class TextSim
     }
 
     /// <summary>
-    /// 两段文字有没有共同的具体词：共享一个 ≥2 字的连续片段就算有
+    /// 两段文字有没有共同的具体词：共享一个 ≥3 字的连续片段才算有
     ///
-    /// 只用于「记忆层前置」这种粗筛——有共同词就值得把记忆拿出来给模型看，
-    /// 没有就跳过。不做语义判断，也不决定最终选什么。
+    /// 门槛不能低到 2 个字：查「EB」会撞上「Li-ebe」里的 eb，
+    /// 于是把一条完全无关的群聊记录当成"你记得"注入私聊。
+    /// 查询本身很短时（两三个字母）要求它不落在别的单词里面。
     /// </summary>
-    public static bool SharesTerm(string query, string text, int minLen = 2)
+    public static bool SharesTerm(string query, string text, int minLen = 3)
     {
         var q = Normalize(query);
         var t = Normalize(text);
-        if (q.Length < minLen || t.Length < minLen) return false;
+        if (q.Length == 0 || t.Length == 0) return false;
         if (q == t) return true;
 
-        // 二元组就够：中文里两个连续字已经是很强的信号
-        var grams = Bigrams(t);
+        if (q.Length < minLen) return WholeWordHit(t, q);
+
+        // 取 t 里所有长度 minLen 的片段，看 q 里有没有一段落在里面
+        var windows = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i + minLen <= t.Length; i++) windows.Add(t.Substring(i, minLen));
+
         for (var i = 0; i + minLen <= q.Length; i++)
-            if (grams.Contains(q.Substring(i, minLen))) return true;
+            if (windows.Contains(q.Substring(i, minLen))) return true;
 
         return false;
     }
+
+    /// <summary>
+    /// 短查询：中文两字就算一个词，包含即可；
+    /// 拉丁字母太容易撞进别的单词（EB 撞 Liebe），必须跨词边界
+    /// </summary>
+    private static bool WholeWordHit(string haystack, string needle)
+    {
+        var idx = haystack.IndexOf(needle, StringComparison.Ordinal);
+        while (idx >= 0)
+        {
+            var before = idx > 0 ? haystack[idx - 1] : ' ';
+            var after = idx + needle.Length < haystack.Length ? haystack[idx + needle.Length] : ' ';
+
+            var leftOk = !IsLatin(before) || !IsLatin(needle[0]);
+            var rightOk = !IsLatin(after) || !IsLatin(needle[^1]);
+            if (leftOk && rightOk) return true;
+
+            idx = haystack.IndexOf(needle, idx + 1, StringComparison.Ordinal);
+        }
+
+        return false;
+    }
+
+    private static bool IsLatin(char c) =>
+        c is >= 'a' and <= 'z' or >= '0' and <= '9';
 
     /// <summary>
     /// 行级增删统计，用于衡量改写幅度

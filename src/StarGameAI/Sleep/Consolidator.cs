@@ -507,6 +507,12 @@ public sealed class Consolidator
         }
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // 这一批只涉及一个会话时，整批都记成那个来源；
+        // 混了多个会话就留空——留空的条目不会进任何按场景的查询，宁可少用也不串场景
+        var scopes = chunks.Select(c => c.Scope).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+        var singleScope = scopes.Count == 1 ? scopes[0] : "";
+
         var items = got.Select(x => new StoreItem
         {
             Id = "s" + Guid.NewGuid().ToString("N")[..7],
@@ -514,6 +520,7 @@ public sealed class Consolidator
             Thing = x.thing,
             Grain = x.grain,
             Open = x.open,
+            Scope = singleScope,
             State = x.kind == "residue" ? "done" : "open",
             CreatedAt = now,
             UpdatedAt = now,

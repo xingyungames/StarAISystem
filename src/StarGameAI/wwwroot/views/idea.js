@@ -54,6 +54,7 @@ export function render(container, api) {
   const statusHost = h('div', {});
   const roundsHost = h('div', {});
   const storeHost = h('div', {});
+  const recallHost = h('div', {});
   const topoHost = h('div', {});
   const wfHost = h('div', {});
   const weightsHost = h('div', {});
@@ -88,6 +89,11 @@ export function render(container, api) {
       h('button', {
         class: 'btn btn-ghost btn-sm', type: 'button',
         onclick: () => loadStore(),
+      }, '刷新')),
+    card('回溯记录', [recallHost],
+      h('button', {
+        class: 'btn btn-ghost btn-sm', type: 'button',
+        onclick: () => loadRecall(),
       }, '刷新')),
     card('最近记账', [counterHost, ledgerHost]),
     card('投递一条想法（试闸门）', [buildTester(), testResult])
@@ -467,6 +473,56 @@ export function render(container, api) {
     );
   }
 
+  /* ---------------- 回溯记录 ---------------- */
+
+  // 一次调用一行：查了什么、翻了多少段、挑中哪块、注入了什么。
+  // 没有这个，出问题时「翻到的是我给的原话还是模型自己编的」根本分不出来。
+  async function loadRecall() {
+    try {
+      const r = await api('/api/recall/trace');
+      if (disposed) return;
+      paintRecall(r.items || []);
+    } catch (err) {
+      if (disposed) return;
+      recallHost.replaceChildren(h('div', { class: 'empty' }, '读不到回溯记录：' + err.message));
+    }
+  }
+
+  function paintRecall(items) {
+    if (items.length === 0) {
+      recallHost.replaceChildren(h('div', { class: 'empty' },
+        '还没有回溯过。它在想不起来某件事时会自己翻留档。'));
+      return;
+    }
+
+    recallHost.replaceChildren(
+      h('div', { class: 'tiny muted', style: 'margin-bottom:8px' },
+        '每行一次调用：查的话 → 翻了几段 / 用的哪种目录 → 结果。点开看注入的原文。'),
+      ...items.map((it) => {
+        const mode = it.mode === 'byday' ? '按天挑' : it.mode === 'flat' ? '整目录' : '-';
+        const state = it.found ? badge('翻到 ' + (it.lines || []).length + ' 段', 'ok')
+                               : badge('没翻到', 'warn');
+        const head = h('div', { class: 'stage-line' },
+          h('span', { class: 'stage-key' }, fmtTime(it.ts)),
+          h('span', { class: 'stage-val' },
+            '「' + (it.query || '') + '」｜' + (it.candidates || 0) + ' 段 / ' + mode + '｜' + (it.tokens || 0) + ' token'),
+          state);
+
+        const detail = h('div', { style: 'display:none' },
+          h('div', { class: 'tiny muted' }, '落点：' + (it.scope || '-') + '　往回 ' + (it.days || 0) + ' 天　' + (it.note || '')),
+          ...(it.picked || []).map((p) => h('div', { class: 'tiny' },
+            '挑中 [' + p.date + '] ' + (p.summary || ''))),
+          ...(it.lines || []).map((l) => h('div', { class: 'tiny muted', style: 'margin-top:4px' },
+            '注入 ' + (l.count || 0) + ' 条：' + (l.text || ''))));
+
+        const row = h('div', { style: 'cursor:pointer', onclick: () => {
+          detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+        } }, head, detail);
+
+        return row;
+      }));
+  }
+
   function paintRounds(rounds) {
     const list = rounds || [];
     if (list.length === 0) {
@@ -760,6 +816,7 @@ export function render(container, api) {
       paintLedger(idea.recent);
       await loadWeights();
       await loadStore();
+      await loadRecall();
     } catch (err) {
       if (disposed || err.status === 401) return;
       presenceHost.replaceChildren(h('div', { class: 'note note-danger' }, '加载失败：' + err.message));
