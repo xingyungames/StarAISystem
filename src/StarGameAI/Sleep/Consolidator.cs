@@ -151,13 +151,14 @@ public sealed class Consolidator
     private readonly DeltaLog _delta;
     private readonly StyleStore _style;
     private readonly IdeaStore _ideaStore;
+    private readonly RecallBuilder _recallBuilder;
     private readonly ILogger<Consolidator> _log;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     public Consolidator(
         Env env, ChatLog chatLog, Store store, Persona persona,
         DeepSeekClient llm, SleepState state, DeltaLog delta, StyleStore style,
-        IdeaStore ideaStore, ILogger<Consolidator> log)
+        IdeaStore ideaStore, RecallBuilder recallBuilder, ILogger<Consolidator> log)
     {
         _env = env;
         _chatLog = chatLog;
@@ -168,6 +169,7 @@ public sealed class Consolidator
         _delta = delta;
         _style = style;
         _ideaStore = ideaStore;
+        _recallBuilder = recallBuilder;
         _log = log;
     }
 
@@ -660,6 +662,30 @@ public sealed class Consolidator
             catch (Exception ex) { _log.LogWarning("思想储存整理失败：{Error}", ex.Message); }
         }
 
+        // 3.7 回溯目录：把这一批切块写进目录
+        //
+        // 摘要先用代码拼，之后由 RefineAsync 改写成「一句话带具体名词」。
+        // 摘要质量决定回溯能不能用——磨成「聊了聊」就等于没有目录。
+        if (failed < capped.Count)
+        {
+            try
+            {
+                var days = capped
+                    .SelectMany(c => c.Entries)
+                    .Select(e => DateOnly.FromDateTime(
+                        DateTimeOffset.FromUnixTimeSeconds(e.Ts).LocalDateTime))
+                    .Distinct()
+                    .ToList();
+
+                var made = 0;
+                foreach (var d in days) made += _recallBuilder.Build(d, d, onlyMissing: false);
+                if (made > 0) _log.LogInformation("回溯目录：新增 {Count} 段", made);
+
+                await _recallBuilder.RefineAsync(8, ct);
+            }
+            catch (Exception ex) { _log.LogWarning("回溯目录更新失败：{Error}", ex.Message); }
+        }
+
         // 只要有分片失败就**不推进水位线**：否则那批对话会被永久跳过（静默丢失记忆）。
         // 下次重跑时靠提交阶段的「已存在条目」去重，不会重复写入。
         if (failed == capped.Count)
@@ -715,6 +741,8 @@ public sealed class Consolidator
         foreach (var scope in scopesInvolved)
             foreach (var e in _store.Read(scope))
                 existing.Add((e.Kind, e.Text));
+
+        var reducedCount = merged.Count;
 
         merged = merged.Where(c =>
             !existing.Any(e => e.Kind == MapKind(c.Kind) && IsSameClaim(e.Text, c.Text))).ToList();
@@ -827,8 +855,14 @@ public sealed class Consolidator
             LastConsumedMsgId = maxEntry.MessageId,
         }, AppJson.Config));
 
-        _log.LogInformation("巩固完成 by={By} 分片={Chunks} 候选={Candidates} 写入={Written} 画像={Absorbed} rev={Rev}",
-            by, capped.Count, merged.Count, written, absorbed, personaRev);
+        _log.LogInformation("巩固完成 by={By} 分片={Chunks} 候选={Candidates} 去重后={AfterDedup} 写入={Written} 画像={Absorbed} rev={Rev}",
+            by, capped.Count, reducedCount, merged.Count, written, absorbed, personaRev);
+
+        // 吃进了一大段记录却一条都没写：要么真没什么可记的，要么候选在某一层被清空了。
+        // 这一条以前只在"分片=0"时看得见，中间掉了多少完全查不到
+        if (written == 0 && fresh.Count >= 20)
+            _log.LogWarning("巩固吃进 {Entries} 条记录但一条都没写入（候选 {Candidates} → 去重后 {AfterDedup}，画像吸收 {Absorbed}），" +
+                            "要么确实没什么可记，要么去重/校验把候选清空了", fresh.Count, reducedCount, merged.Count, absorbed);
 
         return new ConsolidateOutcome
         {

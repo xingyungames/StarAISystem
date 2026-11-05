@@ -54,6 +54,7 @@ public sealed class ChatPipeline
     private readonly Identity _identity;
     private readonly StyleStore _style;
     private readonly DialogueRouter _dialogue;
+    private readonly RecallSession _recallSession;
     private readonly ILogger<ChatPipeline> _log;
 
     /// <summary>
@@ -88,7 +89,7 @@ public sealed class ChatPipeline
         Tools.BuiltinTools builtin,
         Metrics metrics, SleepState sleepState, Consolidator consolidator,
         Activity activity, Tracer tracer, Identity identity, StyleStore style,
-        DialogueRouter dialogue, ILogger<ChatPipeline> log)
+        DialogueRouter dialogue, RecallSession recallSession, ILogger<ChatPipeline> log)
     {
         _env = env;
         _chatLog = chatLog;
@@ -108,6 +109,7 @@ public sealed class ChatPipeline
         _identity = identity;
         _style = style;
         _dialogue = dialogue;
+        _recallSession = recallSession;
         _log = log;
     }
 
@@ -596,6 +598,14 @@ public sealed class ChatPipeline
 
         if (!string.IsNullOrWhiteSpace(memoryBlock))
             sb.Append('\n').Append(memoryBlock).Append('\n');
+
+        // 翻出来的旧对话：用户在这一次上下文里提过，就一直带着，
+        // 不然下一轮它又想不起来、又去翻一次
+        TryAppend(sb, () =>
+        {
+            var recalled = _recallSession.Render(msg.Scope);
+            if (recalled.Length > 0) sb.Append(recalled);
+        });
 
         var tools = _tooling.List().Where(t => t.Meta.Status == "active").ToList();
         if (tools.Count > 0)

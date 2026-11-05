@@ -499,6 +499,8 @@ public sealed class IdeaEngine : BackgroundService
         foreach (var gid in _env.Server.Whitelist.Groups)
         {
             var t = "group:" + gid;
+            //被排除的群不主动去说话
+            if (_env.Idea.IsExcluded(gid)) continue;
             candidates.Add((t, LastMessageTs(t)));
         }
 
@@ -506,6 +508,8 @@ public sealed class IdeaEngine : BackgroundService
         {
             // 私聊目标必须是"能私聊的人"
             if (!_contacts.IsPrivatePartner(c.UserId)) continue;
+            //被排除的人不主动去说话
+            if (_env.Idea.IsExcluded(c.UserId)) continue;
 
             var t = "private:" + c.UserId;
             candidates.Add((t, Math.Max(c.LastSeen, LastMessageTs(t))));
@@ -531,12 +535,18 @@ public sealed class IdeaEngine : BackgroundService
         //遍历白名单群
         //落点必须是 kind:id，裸号一进发送层就会被当成群号
         foreach (var gid in _env.Server.Whitelist.Groups)
+        {
+            //被排除的群不给路由挑
+            if (_env.Idea.IsExcluded(gid)) continue;
             list.Add(new RouteSlot("group", "group:" + gid, "群（群号 " + gid + "）"));
+        }
         //遍历私聊白名单
         foreach (var c in _contacts.All())
         {
             //不能私聊的人跳过
             if (!_contacts.IsPrivatePartner(c.UserId)) continue;
+            //被排除的人不给路由挑
+            if (_env.Idea.IsExcluded(c.UserId)) continue;
 
             var name = c.Name.Trim();
             if (name.Length == 0) name = c.Aliases.FirstOrDefault() ?? c.UserId;
@@ -545,6 +555,7 @@ public sealed class IdeaEngine : BackgroundService
 
         return list;
     }
+
 
     private static string NowText()
     {
