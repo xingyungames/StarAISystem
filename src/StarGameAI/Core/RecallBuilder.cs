@@ -128,9 +128,11 @@ public sealed class RecallBuilder
     }
 
     /// <summary>
-    /// 代码版摘要：谁在场 + 开头一句 + 结尾一句
+    /// 代码版摘要：谁在场 + 开头一句 + 结尾一句 + 显著词
     ///
-    /// 必须压成单行——目录是「一条一行」排出来的，摘要里带换行会让编号错位。
+    /// 显著词这一截是关键：用户问的往往正是缩写、专名、暗号（EB / Dream / 诶嘿），
+    /// 而它们经常不在首末两句里。实盘就是「EB」在块中间，摘要只取了首尾，于是永远挑不中。
+    /// 必须压成单行——目录是一条一行排出来的，带换行会把编号冲乱。
     /// </summary>
     private static string CheapSummary(List<LogEntry> block)
     {
@@ -142,10 +144,72 @@ public sealed class RecallBuilder
         var head = OneLine(first?.Text, 40);
         var tail = OneLine(last?.Text, 30);
 
-        if (head.Length == 0 && tail.Length == 0) return "";
-        if (tail.Length == 0 || tail == head) return head;
-        if (head.Length == 0) return tail;
-        return head + "…" + tail;
+        var body = head;
+        if (tail.Length > 0 && tail != head) body = head.Length == 0 ? tail : head + "…" + tail;
+
+        var keys = Salient(block);
+        if (keys.Count > 0) body += (body.Length > 0 ? " " : "") + "⟨" + string.Join("/", keys) + "⟩";
+
+        return body;
+    }
+
+    /// <summary>
+    /// 显著词：引号里的词 + 大写的拉丁词，出现次数少的排在前面
+    ///
+    /// 按稀有度排是因为用户问的往往是那个只出现过一次的代号（EB），
+    /// 而不是反复出现的通用缩写（SSH / AI）。按出现顺序取前几个会把它截掉。
+    /// 只按字符形态抽，不写句式规则。
+    /// </summary>
+    private static List<string> Salient(List<LogEntry> block)
+    {
+        var count = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        void Bump(string? w)
+        {
+            var v = (w ?? "").Trim();
+            if (v.Length < 2 || v.Length > 14) return;
+            count[v] = count.TryGetValue(v, out var n) ? n + 1 : 1;
+        }
+
+        foreach (var e in block)
+        {
+            foreach (var q in Quoted(e.Text)) Bump(q);
+            foreach (var w in LatinWords(e.Text)) Bump(w);
+        }
+
+        return count
+            .OrderBy(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => kv.Key)
+            .Take(10)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 拉丁词：至少两个字母，且含大写（EB / Dream / PEAK / API）
+    /// </summary>
+    private static IEnumerable<string> LatinWords(string text)
+    {
+        if (string.IsNullOrEmpty(text)) yield break;
+
+        var sb = new StringBuilder();
+
+        foreach (var ch in text + " ")
+        {
+            if (ch is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9')
+            {
+                sb.Append(ch);
+                continue;
+            }
+
+            if (sb.Length >= 2)
+            {
+                var w = sb.ToString();
+                if (w.Any(char.IsUpper)) yield return w;
+            }
+
+            sb.Clear();
+        }
     }
 
     /// <summary>

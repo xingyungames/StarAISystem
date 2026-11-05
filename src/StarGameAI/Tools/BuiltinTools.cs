@@ -28,11 +28,15 @@ public sealed class BuiltinTools
     private readonly Presence _presence;
     private readonly RecallService _recall;
     private readonly RecallSession _recallSession;
+    private readonly ToolTrace _toolTrace;
+    private readonly NapcatApi _napcat;
+    private readonly DeepSeekClient _llm;
     private readonly ILogger<BuiltinTools> _log;
 
     public BuiltinTools(Env env, Sandbox sandbox, Sender sender, ChatLog chatLog,
         Dedup dedup, Contacts contacts, Presence presence,
-        RecallService recall, RecallSession recallSession, ILogger<BuiltinTools> log)
+        RecallService recall, RecallSession recallSession, ToolTrace toolTrace,
+        NapcatApi napcat, DeepSeekClient llm, ILogger<BuiltinTools> log)
     {
         _env = env;
         _sandbox = sandbox;
@@ -43,6 +47,9 @@ public sealed class BuiltinTools
         _presence = presence;
         _recall = recall;
         _recallSession = recallSession;
+        _toolTrace = toolTrace;
+        _napcat = napcat;
+        _llm = llm;
         _log = log;
         Defs = BuildDefs();
     }
@@ -68,7 +75,26 @@ public sealed class BuiltinTools
         name is "sb_list" or "sb_read" or "sb_write" or "sb_mkdir" or "sb_delete" or "sb_move"
             or "qq_find" or "qq_send_private" or "qq_poke"
             or "qq_send_file_private" or "qq_send_file_group"
-            or "history_recall";
+            or "history_recall" or "qq_api" or "qq_see" or "emoji_add" or "emoji_list" or "emoji_send";
+
+    /// <summary>
+    /// qq_api 允许调的只读接口。危险的一个都不放
+    /// </summary>
+    private const string QqAllowList =
+        "- get_image：拿图片的本地路径和下载链接（参数 file 或 file_id）\n" +
+        "- fetch_ptt_text：把语音转成文字，不花模型 token（参数 message_id）\n" +
+        "- ocr_image：识别图片里的文字，只认字不认画（参数 image）\n" +
+        "- get_group_info：群基本信息（参数 group_id）\n" +
+        "- get_group_member_info：单个群成员（参数 group_id、user_id）\n" +
+        "- get_stranger_info：非好友的资料（参数 user_id）\n" +
+        "- get_group_member_list：群成员列表（参数 group_id）——返回很大，别随便调\n" +
+        "- _get_group_notice：群公告（参数 group_id）\n" +
+        "- get_essence_msg_list：群精华（参数 group_id）\n" +
+        "- get_group_honor_info：群荣誉如龙王（参数 group_id）\n" +
+        "- nc_get_user_status：对方在线状态（参数 user_id）\n" +
+        "- get_recent_contact：最近会话\n" +
+        "- get_group_msg_history：群历史消息（参数 group_id、message_seq、count）\n" +
+        "- get_friend_msg_history：私聊历史消息（参数 user_id、message_seq、count）";
 
     private static ToolDef Fn(string name, string desc, Dictionary<string, object> props, params string[] required) =>
         new()
@@ -161,41 +187,457 @@ public sealed class BuiltinTools
                 ["query"] = P("string", "要查的那件事，尽量用用户的原话"),
                 ["days"] = P("number", "往回翻多少天，留空默认 30，最多看配置上限"),
             }, "query"),
+
+        Fn("qq_api", "查 QQ 的信息。只能调下面这些只读接口，别的都不行：\n" + QqAllowList,
+            new()
+            {
+                ["action"] = P("string", "接口名，例如 get_image / fetch_ptt_text"),
+                ["params"] = P("object", "接口参数，例如 {\"message_id\":\"123\"}"),
+            }, "action"),
+
+        Fn("qq_see", "看一张图并说出里面有什么。\n" +
+                     "**对话里出现 [图片](img-xxxxxxxx) 时，把这个 img-xxxxxxxx 原样传进来就能看那一张**。\n" +
+                     "只看见 [图片] 没有编号，说明那张图取不到文件，直接问对方说了什么。\n" +
+                     "每张图大概 1000 token，只在真需要看的时候用。",
+            new()
+            {
+                ["image"] = P("string", "图片编号 img-xxxxxxxx，或 http 链接，或沙箱内路径"),
+                ["question"] = P("string", "想问什么，留空就让它描述图里有什么"),
+                ["low"] = P("boolean", "true 表示用低分辨率（更便宜更快）"),
+            }, "image"),
+
+        Fn("emoji_add", "把一张图存进自己的表情库，并给它写一条说明，以后想发的时候能查。",
+            new()
+            {
+                ["image"] = P("string", "图片编号 img-xxxxxxxx，或 http 链接，或沙箱内路径"),
+                ["name"] = P("string", "给它起的名字，之后用它找这张图"),
+                ["meaning"] = P("string", "什么时候用、什么意思；留空就自己看图写一条"),
+            }, "image", "name"),
+
+        Fn("emoji_list", "看自己的表情库里有哪些表情、各是什么意思。想发表情之前先查这个。",
+            new()),
+
+        Fn("emoji_send", "在当前会话里发一个表情库里的表情。名字要先在 emoji_list 里查准。",
+            new()
+            {
+                ["name"] = P("string", "表情名字，必须和库里的一致"),
+            }, "name"),
     };
 
     public async Task<string> InvokeAsync(string name, JsonElement args, ToolCallContext ctx, CancellationToken ct)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string output;
+
         try
         {
-            return name switch
-            {
-                "sb_list" => SbList(Str(args, "path")),
-                "sb_read" => SbRead(Str(args, "path")),
-                "sb_write" => SbWrite(Str(args, "path"), Str(args, "content")),
-                "sb_mkdir" => SbMkdir(Str(args, "path")),
-                "sb_delete" => SbDelete(Str(args, "path")),
-                "sb_move" => SbMove(Str(args, "from"), Str(args, "to")),
-                "qq_send_private" => await QqSendPrivateAsync(Str(args, "user_id"), Str(args, "text"), ctx, ct),
-                "qq_poke" => await QqPokeAsync(Str(args, "user_id"), Str(args, "group_id"), ctx, ct),
-                "qq_find" => QqFind(Str(args, "query")),
-                "qq_send_file_private" => await QqSendFileAsync(false, Str(args, "user_id"),
-                    Str(args, "path"), Str(args, "name"), ctx, ct),
-                "qq_send_file_group" => await QqSendFileAsync(true, Str(args, "group_id"),
-                    Str(args, "path"), Str(args, "name"), ctx, ct),
-                "history_recall" => await HistoryRecallAsync(Str(args, "query"), Int(args, "days"), ctx, ct),
-                _ => $"未知的内置工具：{name}",
-            };
+            output = await InvokeCoreAsync(name, args, ctx, ct);
         }
         catch (SandboxViolation ex)
         {
             _log.LogWarning("沙箱拒绝：{Error}", ex.Message);
-            return "被拒绝：" + ex.Message;
+            output = "被拒绝：" + ex.Message;
         }
         catch (Exception ex)
         {
             _log.LogWarning("内置工具 {Name} 失败：{Error}", name, ex.Message);
+            output = "工具失败：" + ex.Message;
+        }
+
+        sw.Stop();
+
+        try
+        {
+            _toolTrace.Append(name, args.ValueKind == JsonValueKind.Undefined ? "" : args.GetRawText(),
+                !LooksFailed(output), (int)sw.ElapsedMilliseconds, output, ctx.Scope, ctx.TraceId);
+        }
+        catch { /* 记账失败不影响结果 */ }
+
+        return output;
+    }
+
+    private async Task<string> InvokeCoreAsync(string name, JsonElement args, ToolCallContext ctx, CancellationToken ct)
+    {
+        return name switch
+        {
+            "sb_list" => SbList(Str(args, "path")),
+            "sb_read" => SbRead(Str(args, "path")),
+            "sb_write" => SbWrite(Str(args, "path"), Str(args, "content")),
+            "sb_mkdir" => SbMkdir(Str(args, "path")),
+            "sb_delete" => SbDelete(Str(args, "path")),
+            "sb_move" => SbMove(Str(args, "from"), Str(args, "to")),
+            "qq_send_private" => await QqSendPrivateAsync(Str(args, "user_id"), Str(args, "text"), ctx, ct),
+            "qq_poke" => await QqPokeAsync(Str(args, "user_id"), Str(args, "group_id"), ctx, ct),
+            "qq_find" => QqFind(Str(args, "query")),
+            "qq_send_file_private" => await QqSendFileAsync(false, Str(args, "user_id"),
+                Str(args, "path"), Str(args, "name"), ctx, ct),
+            "qq_send_file_group" => await QqSendFileAsync(true, Str(args, "group_id"),
+                Str(args, "path"), Str(args, "name"), ctx, ct),
+            "history_recall" => await HistoryRecallAsync(Str(args, "query"), Int(args, "days"), ctx, ct),
+            "qq_api" => await QqApiAsync(Str(args, "action"), args, ct),
+            "qq_see" => await QqSeeAsync(Str(args, "image"), Str(args, "question"),
+                Bool(args, "low"), ct),
+            "emoji_add" => await EmojiAddAsync(Str(args, "image"), Str(args, "name"),
+                Str(args, "meaning"), ct),
+            "emoji_list" => EmojiList(),
+            "emoji_send" => await EmojiSendAsync(Str(args, "name"), ctx, ct),
+            _ => $"未知的内置工具：{name}",
+        };
+    }
+
+    private string EmojiCatalogPath => Path.Combine(_env.WorkspaceDir, "emoji", "catalog.json");
+
+    private Dictionary<string, JsonElement> LoadCatalog()
+    {
+        try
+        {
+            if (!File.Exists(EmojiCatalogPath)) return new Dictionary<string, JsonElement>();
+            var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                File.ReadAllText(EmojiCatalogPath), Core.AppJson.Config);
+            return doc ?? new Dictionary<string, JsonElement>();
+        }
+        catch
+        {
+            return new Dictionary<string, JsonElement>();
+        }
+    }
+
+    /// <summary>
+    /// 看库里有什么表情
+    /// </summary>
+    private string EmojiList()
+    {
+        var all = LoadCatalog();
+        if (all.Count == 0) return "表情库还是空的。收到合适的图可以用 emoji_add 存进来。";
+
+        var sb = new StringBuilder();
+        sb.AppendLine("表情库（" + all.Count + " 个）：");
+
+        foreach (var kv in all.Take(30))
+        {
+            var desc = kv.Value.TryGetProperty("desc", out var d) && d.ValueKind == JsonValueKind.String
+                ? (d.GetString() ?? "")
+                : "";
+
+            sb.Append("- ").Append(kv.Key);
+            if (desc.Length > 0) sb.Append("：").Append(desc);
+            sb.AppendLine();
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// 发表情。图片段用 base64 直传，不依赖本地路径对 NapCat 可见
+    /// </summary>
+    private async Task<string> EmojiSendAsync(string name, ToolCallContext ctx, CancellationToken ct)
+    {
+        var key = (name ?? "").Trim();
+        if (key.Length == 0) return "工具失败：要发哪个表情？先用 emoji_list 看有哪些";
+
+        var scope = (ctx.Scope ?? "").Trim();
+        if (scope.Length == 0) return "工具失败：不知道当前在哪个会话";
+
+        var all = LoadCatalog();
+        if (!all.TryGetValue(key, out var item))
+        {
+            var near = all.Keys.Where(k => k.Contains(key, StringComparison.Ordinal)
+                                           || key.Contains(k, StringComparison.Ordinal)).Take(3).ToList();
+            return near.Count > 0
+                ? $"工具失败：没有叫「{key}」的表情。相近的有：{string.Join("、", near)}"
+                : $"工具失败：没有叫「{key}」的表情。先用 emoji_list 看有哪些";
+        }
+
+        var rel = item.TryGetProperty("file", out var f) && f.ValueKind == JsonValueKind.String
+            ? (f.GetString() ?? "")
+            : "";
+
+        if (rel.Length == 0) return "工具失败：这条表情没记文件";
+
+        var path = Path.Combine(_env.WorkspaceDir, rel.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(path)) return "工具失败：表情文件不在了（" + rel + "）";
+
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(path, ct);
+            if (bytes.Length > MaxImageBytes) return "工具失败：这张图太大，发不出去";
+
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            var mime = ext switch
+            {
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                _ => "image/jpeg",
+            };
+
+            var payload = "base64://" + Convert.ToBase64String(bytes);
+            var r = await _sender.SendImageAsync(scope, payload, ct);
+
+            if (!r.Ok) return "工具失败：发不出去（" + r.Error + "）";
+            return "发出去了：" + key;
+        }
+        catch (Exception ex)
+        {
             return "工具失败：" + ex.Message;
         }
+    }
+
+    /// <summary>
+    /// 调一个 OneBot 只读接口。白名单之外一律拒绝
+    /// </summary>
+    private async Task<string> QqApiAsync(string action, JsonElement args, CancellationToken ct)
+    {
+        var name = (action ?? "").Trim().TrimStart('/');
+        if (name.Length == 0) return "工具失败：没给接口名";
+
+        if (!AllowedActions.Contains(name))
+            return $"工具失败：{name} 不在允许列表里。能用的只有：" + QqAllowList;
+
+        var payload = new Dictionary<string, object?>();
+        if (args.ValueKind == JsonValueKind.Object
+            && args.TryGetProperty("params", out var p)
+            && p.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in p.EnumerateObject()) payload[prop.Name] = ToClr(prop.Value);
+        }
+
+        // get_image / ocr_image 的 image/file 参数也支持用编号
+        foreach (var key in new[] { "image", "file" })
+        {
+            if (!payload.TryGetValue(key, out var v)) continue;
+            var s = v?.ToString() ?? "";
+            if (!Core.MediaRef.LooksLikeId(s)) continue;
+
+            var url = Core.MediaRef.Get(_env, s);
+            if (!string.IsNullOrEmpty(url)) payload[key] = url;
+        }
+
+        var (ok, data, err) = await _napcat.CallAsync(name, payload, ct);
+
+        if (!ok) return "工具失败：" + err;
+        if (data.Length == 0) return "（接口返回空）";
+
+        // 大块返回不整包塞给模型，截断并提示
+        if (data.Length > 2000)
+            return data[..2000] + $"……（后面还有，共 {data.Length} 字。要看更细的，用具体接口查单个对象）";
+
+        return data;
+    }
+
+    private static object? ToClr(JsonElement v) => v.ValueKind switch
+    {
+        JsonValueKind.String => v.GetString(),
+        JsonValueKind.Number => v.TryGetInt64(out var n) ? n : v.GetDouble(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Null => null,
+        _ => v.GetRawText(),
+    };
+
+    /// <summary>
+    /// 看一张图。图片只能放 user 消息里，所以这里走一次旁路请求，只把文字带回来
+    /// </summary>
+    private async Task<string> QqSeeAsync(string image, string question, bool low, CancellationToken ct)
+    {
+        var r = await ResolveImageAsync(image, ct);
+        if (r.error.Length > 0) return "工具失败：" + r.error;
+
+        var prompt = (question ?? "").Trim();
+        if (prompt.Length == 0) prompt = "用一两句话描述这张图里有什么。如果图里有文字，把文字也说出来。";
+
+        try
+        {
+            var res = await _llm.VisionAsync("gate", prompt, r.url, low ? "low" : "", ct);
+            var text = (res.Content ?? "").Trim();
+            return text.Length > 0 ? text : "（它看了，但没说出什么）";
+        }
+        catch (Exception ex)
+        {
+            return "工具失败：看图失败（" + ex.Message + "）";
+        }
+    }
+
+    /// <summary>
+    /// 把图存进表情库：落盘 + 写说明 + 记进 catalog
+    /// </summary>
+    private async Task<string> EmojiAddAsync(string image, string name, string meaning, CancellationToken ct)
+    {
+        var key = (name ?? "").Trim();
+        if (key.Length == 0) return "工具失败：得给这个表情起个名字，不然以后找不到";
+
+        var r = await ResolveImageAsync(image, ct);
+        if (r.error.Length > 0) return "工具失败：" + r.error;
+
+        var dir = Path.Combine(_env.WorkspaceDir, "emoji");
+        Directory.CreateDirectory(dir);
+
+        var ext = ExtOf(r.url, r.origin);
+        var fileName = ChatLog.SafeScope(key) + ext;
+        var full = Path.Combine(dir, fileName);
+
+        try
+        {
+            await File.WriteAllBytesAsync(full, r.bytes, ct);
+        }
+        catch (Exception ex)
+        {
+            return "工具失败：存不进去（" + ex.Message + "）";
+        }
+
+        // 没给意思就自己看一眼写一条——表情包大多没字，OCR 指望不上，只能视觉
+        var desc = (meaning ?? "").Trim();
+        if (desc.Length == 0)
+        {
+            try
+            {
+                var res = await _llm.VisionAsync("gate",
+                    "这是一个聊天用的表情包。用一句不超过 30 字的话说清它表达什么情绪、什么场合适合发。",
+                    r.url, "low", ct);
+                desc = (res.Content ?? "").Trim();
+            }
+            catch { /* 看不了就留空，之后再补 */ }
+        }
+
+        var catalogPath = Path.Combine(dir, "catalog.json");
+        var catalog = new Dictionary<string, object>();
+
+        try
+        {
+            if (File.Exists(catalogPath))
+            {
+                var old = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                    File.ReadAllText(catalogPath), Core.AppJson.Config);
+                if (old is not null)
+                    foreach (var kv in old) catalog[kv.Key] = kv.Value;
+            }
+        }
+        catch { /* 目录坏了就重建 */ }
+
+        catalog[key] = new
+        {
+            file = "emoji/" + fileName,
+            desc,
+            added = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+
+        try
+        {
+            Env.WriteAtomic(catalogPath, JsonSerializer.Serialize(catalog, Core.AppJson.Config));
+        }
+        catch (Exception ex)
+        {
+            return "工具失败：catalog 写不进去（" + ex.Message + "）";
+        }
+
+        return $"收好了：{key}（{fileName}）" + (desc.Length > 0 ? "　说明：" + desc : "　说明还没写");
+    }
+
+    /// <summary>
+    /// 把「链接或路径」变成可以直接喂给模型的引用，外加原始字节
+    /// </summary>
+    private async Task<(string url, byte[] bytes, string origin, string error)> ResolveImageAsync(
+        string image, CancellationToken ct)
+    {
+        var src = (image ?? "").Trim();
+        if (src.Length == 0) return ("", Array.Empty<byte>(), "", "没给图片");
+
+        // 正文里的 [图片](img-xxxxxxxx)：用编号换回真 url
+        if (Core.MediaRef.LooksLikeId(src))
+        {
+            var url = Core.MediaRef.Get(_env, src);
+            if (string.IsNullOrEmpty(url))
+                return ("", Array.Empty<byte>(), "", $"这个编号 {src} 找不到对应的图，可能太久了");
+            src = url;
+        }
+
+        if (src.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || src.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var resp = await Net.GetAsync(src, ct);
+                if (!resp.IsSuccessStatusCode)
+                    return ("", Array.Empty<byte>(), "", $"下载失败 HTTP {(int)resp.StatusCode}");
+
+                var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
+                if (bytes.Length > MaxImageBytes)
+                    return ("", Array.Empty<byte>(), "", "图片太大了");
+
+                return (src, bytes, src, "");
+            }
+            catch (Exception ex)
+            {
+                return ("", Array.Empty<byte>(), "", "下载失败：" + ex.Message);
+            }
+        }
+
+        var path = src;
+        if (!Path.IsPathRooted(path)) path = Path.Combine(_env.WorkspaceDir, path);
+        if (!File.Exists(path))
+        {
+            var alt = Path.Combine(_env.Root, src);
+            if (File.Exists(alt)) path = alt;
+            else return ("", Array.Empty<byte>(), "", "找不到这个文件：" + src);
+        }
+
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(path, ct);
+            if (bytes.Length > MaxImageBytes)
+                return ("", Array.Empty<byte>(), "", "图片太大了");
+
+            var mime = ExtOf("", path) switch
+            {
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                _ => "image/jpeg",
+            };
+
+            return ("data:" + mime + ";base64," + Convert.ToBase64String(bytes), bytes, path, "");
+        }
+        catch (Exception ex)
+        {
+            return ("", Array.Empty<byte>(), "", "读不出来：" + ex.Message);
+        }
+    }
+
+    private static string ExtOf(string url, string path)
+    {
+        var probe = url.Length > 0 ? url : path;
+        var q = probe.IndexOf('?');
+        if (q >= 0) probe = probe[..q];
+
+        var ext = Path.GetExtension(probe).ToLowerInvariant();
+        return ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" ? ext : ".jpg";
+    }
+
+    private static readonly System.Net.Http.HttpClient Net = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private const long MaxImageBytes = 12 * 1024 * 1024;
+
+    /// <summary>
+    /// qq_api 允许调的接口名
+    /// </summary>
+    private static readonly HashSet<string> AllowedActions = new(StringComparer.Ordinal)
+    {
+        "get_image", "fetch_ptt_text", "ocr_image",
+        "get_group_info", "get_group_member_info", "get_stranger_info", "get_group_member_list",
+        "_get_group_notice", "get_essence_msg_list", "get_group_honor_info",
+        "nc_get_user_status", "get_recent_contact",
+        "get_group_msg_history", "get_friend_msg_history",
+    };
+
+    private static bool Bool(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object) return false;
+        if (!args.TryGetProperty(name, out var v)) return false;
+        return v.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.String => (v.GetString() ?? "").ToLowerInvariant() is "true" or "1",
+            _ => false,
+        };
     }
 
 

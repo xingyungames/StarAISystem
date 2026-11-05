@@ -3,7 +3,7 @@
    ============================================================ */
 
 import {
-  h, card, badge, toast, unimplementedNote, emptyState, openModal
+  h, card, badge, toast, fmtTime, unimplementedNote, emptyState, openModal
 } from '../app.js';
 
 const STATUS_META = {
@@ -48,7 +48,54 @@ export function render(container, api) {
     h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => load() }, '刷新')
   );
 
-  container.append(errorSlot, listCard, detailSlot);
+  const callSlot = h('div', { class: 'card-body tight' });
+  const callCard = card('调用记录', callSlot,
+    h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => loadCalls() }, '刷新')
+  );
+
+  container.append(errorSlot, callCard, listCard, detailSlot);
+
+  /* ---------- 调用记录 ---------- */
+  // 内置工具每次调用都落一条，含参数和返回。
+  // 没有这一屏，「她到底调没调工具、拿回了什么」只能翻聊天记录猜。
+  function paintCalls(items) {
+    if (!items || items.length === 0) {
+      callSlot.replaceChildren(h('div', { class: 'empty' },
+        '还没有工具调用记录。她在聊天里用到工具时，这里会出现每次调用的参数和返回。'));
+      return;
+    }
+
+    callSlot.replaceChildren(...items.map((it) => {
+      const ok = it.ok ? badge('成功', 'ok') : badge('失败', 'warn');
+      const head = h('div', { class: 'stage-line' },
+        h('span', { class: 'stage-key' }, fmtTime(it.ts)),
+        h('span', { class: 'stage-val' }, h('code', {}, it.tool || '-')),
+        h('span', { class: 'tiny muted' }, (it.ms || 0) + 'ms'),
+        ok);
+
+      const detail = h('div', { style: 'display:none;margin:4px 0 8px 12px' },
+        h('div', { class: 'tiny muted' }, '场景：' + (it.scope || '-')),
+        h('div', { class: 'tiny' }, '参数：' + (it.args || '-')),
+        h('div', { class: 'tiny' }, '返回：' + (it.result || '-')));
+
+      return h('div', { style: 'border-bottom:1px solid var(--line-soft)' },
+        h('div', { style: 'cursor:pointer', onclick: () => {
+          detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+        } }, head),
+        detail);
+    }));
+  }
+
+  async function loadCalls() {
+    try {
+      const r = await api('/api/tool/trace');
+      if (disposed) return;
+      paintCalls(r.items || []);
+    } catch (err) {
+      if (disposed) return;
+      callSlot.replaceChildren(h('div', { class: 'empty' }, '读不到调用记录：' + err.message));
+    }
+  }
 
   /* ---------- 列表 ---------- */
   function paintList() {
@@ -255,6 +302,7 @@ export function render(container, api) {
 
   tableWrap.replaceChildren(h('div', { class: 'loading' }, '正在加载'));
   load();
+  loadCalls();
 
   return function cleanup() { disposed = true; };
 }

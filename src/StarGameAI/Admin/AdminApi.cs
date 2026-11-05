@@ -1626,6 +1626,27 @@ public static class AdminApi
             });
         });
 
+        // 工具调用记账：所有内置工具的调用都落在这里
+        app.MapGet("/api/tool/trace", (HttpContext ctx, Env env, ToolTrace trace) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+            return Results.Json(new { items = trace.Recent(50) });
+        });
+
+        // 手动润色目录摘要：不用等睡眠，随时把最近几段改写成「带具体名词的一句话」
+        app.MapPost("/api/recall/refine", async (HttpContext ctx, Env env, RecallBuilder builder) =>
+        {
+            if (!Allowed(ctx, env)) return Deny();
+
+            var body = await ReadJsonAsync(ctx);
+            var max = body is null ? 10 : IntProp(body.RootElement, "max");
+            if (max <= 0) max = 10;
+
+            var done = await builder.RefineAsync(Math.Clamp(max, 1, 40), ctx.RequestAborted);
+            Audit(env, "recall.refine", new { done });
+            return Results.Json(new { ok = true, done });
+        });
+
         // 回溯记账：最近几次查了什么、挑中哪块、注入了什么
         app.MapGet("/api/recall/trace", (HttpContext ctx, Env env, RecallTrace trace) =>
         {
@@ -2271,6 +2292,10 @@ public static class AdminApi
     private static string StrOf(JsonElement root, string key) =>
         root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
             ? (v.GetString() ?? "") : "";
+
+    private static int IntProp(JsonElement root, string key) =>
+        root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i)
+            ? i : 0;
 
     private static List<string>? StrListOf(JsonElement root, string key)
     {

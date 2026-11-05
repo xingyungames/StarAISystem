@@ -330,10 +330,12 @@ public sealed class RecallService
     private readonly IdeaStore _ideaStore;
     private readonly DeepSeekClient _llm;
     private readonly RecallTrace _trace;
+    private readonly RecallBuilder _builder;
     private readonly ILogger<RecallService> _log;
 
     public RecallService(Env env, ChatLog chatLog, RecallIndex index, Store store,
-        IdeaStore ideaStore, DeepSeekClient llm, RecallTrace trace, ILogger<RecallService> log)
+        IdeaStore ideaStore, DeepSeekClient llm, RecallTrace trace, RecallBuilder builder,
+        ILogger<RecallService> log)
     {
         _env = env;
         _chatLog = chatLog;
@@ -342,6 +344,7 @@ public sealed class RecallService
         _ideaStore = ideaStore;
         _llm = llm;
         _trace = trace;
+        _builder = builder;
         _log = log;
     }
 
@@ -398,6 +401,18 @@ public sealed class RecallService
 
         // 2. 取目录候选
         days = Math.Clamp(days <= 0 ? 30 : days, 1, Math.Max(1, cfg.MaxLookbackDays));
+
+        // 今天的块现切一遍：目录是快照，不刷新就查不到「下午刚说的那件事」
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            _builder.Build(today, today, onlyMissing: false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("刷新今天的目录失败（不影响这次检索）：{Error}", ex.Message);
+        }
+
         var candidates = _index.Blocks(days, scope);
         outcome.Candidates = candidates.Count;
 
