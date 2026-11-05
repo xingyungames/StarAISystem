@@ -55,6 +55,9 @@ builder.Services.AddSingleton<IdeaChainStore>();
 builder.Services.AddSingleton<IdeaStore>();
 builder.Services.AddSingleton<RecallIndex>();
 builder.Services.AddSingleton<RecallTrace>();
+builder.Services.AddSingleton<ToolTrace>();
+builder.Services.AddSingleton<NapcatApi>();
+builder.Services.AddSingleton<MediaPrep>();
 builder.Services.AddSingleton<RecallService>();
 builder.Services.AddSingleton<RecallSession>();
 builder.Services.AddSingleton<RecallBuilder>();
@@ -157,7 +160,16 @@ if (env.Gate.BotNames.Count == 0)
 
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// 后台是自己改自己看的：js 一改就要立刻生效，不能让浏览器吃缓存。
+// 加这条之前，「改完代码刷新看不到变化」每次都要先怀疑是不是自己写错了
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        ctx.Context.Response.Headers["Pragma"] = "no-cache";
+    },
+});
 app.MapAdmin();
 
 // 后台首页：POST "/" 已被 OneBot 上报占用，所以 GET "/" 需要显式给一个处理端点，

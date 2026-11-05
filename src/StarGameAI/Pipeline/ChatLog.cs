@@ -66,6 +66,18 @@ public sealed class ChatLog
             sw.Write(line);
             sw.Write('\n');
         }
+
+        // 媒体段顺手登记，模型才能拿编号换回 url 去看图/转语音
+        try
+        {
+            foreach (var s in entry.Segments)
+            {
+                if (string.IsNullOrWhiteSpace(s.Url)) continue;
+                if (s.T is not ("image" or "record" or "video")) continue;
+                MediaRef.Put(_env, s.Url, entry.Scope, s.T);
+            }
+        }
+        catch { /* 登记失败只影响这一次能不能看图 */ }
     }
 
     /// <summary>
