@@ -48,6 +48,27 @@ public static class TextSim
     }
 
     /// <summary>
+    /// 两段文字有没有共同的具体词：共享一个 ≥2 字的连续片段就算有
+    ///
+    /// 只用于「记忆层前置」这种粗筛——有共同词就值得把记忆拿出来给模型看，
+    /// 没有就跳过。不做语义判断，也不决定最终选什么。
+    /// </summary>
+    public static bool SharesTerm(string query, string text, int minLen = 2)
+    {
+        var q = Normalize(query);
+        var t = Normalize(text);
+        if (q.Length < minLen || t.Length < minLen) return false;
+        if (q == t) return true;
+
+        // 二元组就够：中文里两个连续字已经是很强的信号
+        var grams = Bigrams(t);
+        for (var i = 0; i + minLen <= q.Length; i++)
+            if (grams.Contains(q.Substring(i, minLen))) return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// 行级增删统计，用于衡量改写幅度
     /// </summary>
     public static (int added, int removed) LineDelta(string before, string after)
