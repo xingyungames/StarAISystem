@@ -173,6 +173,75 @@ public sealed class DeepSeekClient
         throw new LlmException(Sanitize(lastError));
     }
 
+    /// <summary>
+    /// 看一张图，返回一句描述
+    ///
+    /// 必须单独走一次请求：图片只能放在 user 消息里，
+    /// 而工具结果是 role=tool，只能装文本。所以「看图」只能是旁路调用 + 回文字。
+    /// 每张图最多 1024 token（官方上限，大图会先缩放）。
+    /// </summary>
+    /// <param name="profile">档位，缺省 gate（低温度、短输出）</param>
+    /// <param name="prompt">要它看图说什么</param>
+    /// <param name="image">http URL / data:base64 / fileId</param>
+    /// <param name="detail">low 缩到 512×512 更便宜；不填按原图</param>
+    /// <param name="ct">取消</param>
+    public async Task<LlmResult> VisionAsync(string profile, string prompt, string image,
+        string detail, CancellationToken ct)
+    {
+        if (!HasKey) throw new LlmException("DeepSeek API Key 为空");
+
+        var p = _cfg.Profile(string.IsNullOrEmpty(profile) ? "gate" : profile);
+
+        var imageUrl = new Dictionary<string, object?> { ["url"] = image };
+        if (!string.IsNullOrEmpty(detail)) imageUrl["detail"] = detail;
+
+        var messages = new List<object>
+        {
+            new Dictionary<string, object?>
+            {
+                ["role"] = "user",
+                ["content"] = new List<object>
+                {
+                    new Dictionary<string, object?> { ["type"] = "text", ["text"] = prompt },
+                    new Dictionary<string, object?> { ["type"] = "image_url", ["image_url"] = imageUrl },
+                },
+            },
+        };
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = _cfg.Model,
+            ["messages"] = messages,
+            ["temperature"] = p.Temperature,
+            ["max_tokens"] = Math.Min(400, p.MaxTokens),
+            ["stream"] = false,
+            ["thinking"] = new Dictionary<string, object> { ["type"] = "disabled" },
+        };
+
+        var body = JsonSerializer.Serialize(payload, Core.AppJson.Wire);
+        var url = _cfg.BaseUrl.TrimEnd('/') + "/chat/completions";
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(_cfg.TimeoutSeconds));
+
+        var sw = Stopwatch.StartNew();
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + _apiKey);
+
+        using var resp = await Http.SendAsync(req, cts.Token);
+        var text = await resp.Content.ReadAsStringAsync(cts.Token);
+        sw.Stop();
+
+        if (!resp.IsSuccessStatusCode)
+            throw new LlmException($"HTTP {(int)resp.StatusCode}: {Truncate(text, 200)}");
+
+        return Parse(text, (int)sw.ElapsedMilliseconds);
+    }
+
     private LlmResult Parse(string text, int latencyMs)
     {
         JsonDocument doc;

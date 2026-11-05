@@ -1,4 +1,7 @@
+using System.Text;
 using System.Text.Json;
+
+using StarGameAI.Core;
 
 namespace StarGameAI.Gateway;
 
@@ -120,8 +123,8 @@ public static class OneBot
                     break;
 
                 case "image":
-                    sb.Append("[图片]");
                     briefs.Add(new SegBrief { T = "image", Brief = "[图片]", Url = Str(data, "url") });
+                    AppendMedia(sb, briefs[^1], "[图片]");
                     break;
 
                 case "face":
@@ -131,13 +134,13 @@ public static class OneBot
                     break;
 
                 case "record":
-                    sb.Append("[语音]");
                     briefs.Add(new SegBrief { T = "record", Brief = "[语音]", Url = Str(data, "url") });
+                    AppendMedia(sb, briefs[^1], "[语音]");
                     break;
 
                 case "video":
-                    sb.Append("[视频]");
                     briefs.Add(new SegBrief { T = "video", Brief = "[视频]", Url = Str(data, "url") });
+                    AppendMedia(sb, briefs[^1], "[视频]");
                     break;
 
                 case "file":
@@ -177,5 +180,23 @@ public static class OneBot
         }
 
         return (sb.ToString().Trim(), briefs, addressed, replyTo);
+    }
+
+    /// <summary>
+    /// 把媒体段写进正文。带 url 的写成 [图片](img-xxxxxxxx)，
+    /// 模型拿着这个编号就能让工具去看、去转文字——直接给 url 会把每行对话撑到两百字
+    /// </summary>
+    /// <param name="sb">正文</param>
+    /// <param name="brief">这一段的简报（已经带 url）</param>
+    /// <param name="label">占位文字，例如 [图片]</param>
+    private static void AppendMedia(StringBuilder sb, SegBrief brief, string label)
+    {
+        if (string.IsNullOrWhiteSpace(brief.Url))
+        {
+            sb.Append(label);
+            return;
+        }
+
+        sb.Append(label).Append('(').Append(MediaRef.IdOf(brief.Url)).Append(')');
     }
 }

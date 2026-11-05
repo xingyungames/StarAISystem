@@ -28,7 +28,8 @@ public sealed class Receiver
     private int _pending;
 
     public Receiver(Env env, Dedup dedup, ChatLog chatLog, Metrics metrics,
-        Core.Activity activity, Core.Contacts contacts, Core.Presence presence, ILogger<Receiver> log)
+        Core.Activity activity, Core.Contacts contacts, Core.Presence presence,
+        ILogger<Receiver> log)
     {
         _env = env;
         _dedup = dedup;
@@ -240,16 +241,18 @@ public sealed class InboundWorker : BackgroundService
 {
     private readonly Receiver _receiver;
     private readonly ChatPipeline _pipeline;
+    private readonly Core.MediaPrep _mediaPrep;
     private readonly ILogger<InboundWorker> _log;
     private readonly SemaphoreSlim _perScope = new(1, 1);
 
-    public InboundWorker(Receiver receiver, ChatPipeline pipeline, ILogger<InboundWorker> log)
+    public InboundWorker(Receiver receiver, ChatPipeline pipeline,
+        Core.MediaPrep mediaPrep, ILogger<InboundWorker> log)
     {
         _receiver = receiver;
         _pipeline = pipeline;
+        _mediaPrep = mediaPrep;
         _log = log;
     }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var item in _receiver.Reader.ReadAllAsync(stoppingToken))
@@ -257,6 +260,18 @@ public sealed class InboundWorker : BackgroundService
             _receiver.OnDequeued();
             try
             {
+                // 图片先补内容：OCR 免费，私聊再补一句画面描述。
+                // 必须在进 pipeline 之前做完，否则发言门读到的还是裸的 [图片]
+                try
+                {
+                    var m = item.Message;
+                    m.Text = await _mediaPrep.EnrichAsync(m.Text, m.Segments, m.IsPrivate, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug("图片预处理失败（按原样继续）：{Error}", ex.Message);
+                }
+
                 await _perScope.WaitAsync(stoppingToken);
                 try
                 {

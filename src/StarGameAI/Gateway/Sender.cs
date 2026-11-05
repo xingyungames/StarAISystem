@@ -149,6 +149,24 @@ public sealed class Sender
         return results;
     }
 
+    /// <summary>
+    /// 发一张图（表情包走这条）
+    /// </summary>
+    /// <param name="scope">private:xxx 或 group:xxx</param>
+    /// <param name="file">base64://… / http 链接 / 本地路径</param>
+    /// <param name="ct">取消</param>
+    public async Task<SendResult> SendImageAsync(string scope, string file, CancellationToken ct)
+    {
+        await ThrottleAsync(scope, ct);
+
+        var segments = new List<object>
+        {
+            new { type = "image", data = new { file } },
+        };
+
+        return await SendRawAsync(scope, segments, ct);
+    }
+
     public async Task<SendResult> SendRawAsync(string scope, List<object> segments, CancellationToken ct)
     {
         var isPrivate = scope.StartsWith("private:", StringComparison.Ordinal);
